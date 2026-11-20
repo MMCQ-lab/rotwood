@@ -53,7 +53,8 @@ static uint32_t scaleRGB(uint32_t c, float f)
     int r = clampi((int)(((c >> 16) & 255) * f), 0, 255), g = clampi((int)(((c >> 8) & 255) * f), 0, 255), b = clampi((int)((c & 255) * f), 0, 255);
     return 0xFF000000 | ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
 }
-static int fogShade(float d) { return (int)(256.f * clampf(1.25f - d * 0.085f, 0.10f, 1.f)); }
+static int fogShade(float d) { return (int)(256.f * clampf(1.25f - d * 0.045f, 0.30f, 1.f)); }
+#define EM(c) ((((uint32_t)(c)) & 0x00FFFFFFu) | 0xFE000000u)      /* emissive: drawn at full brightness, ignores light and fog */
 
 /* ------------------------------------------------------------------ */
 /* Font (original 5x7) and 2D drawing                                 */
@@ -214,6 +215,29 @@ static void signText(uint32_t *t, const char *top, const char *bottom)
     if (top) drawTextBuf(t, TS, TS, 32 - textW(top, 1) / 2, 12, 1, 0xFFE8E4D8, top, 0, 0, 0, TS, TS);
     if (bottom) drawTextBuf(t, TS, TS, 32 - textW(bottom, 1) / 2, 50, 1, 0xFFFFE070, bottom, 0, 0, 0, TS, TS);
 }
+/* blood spatter, drips, claw marks and soot: makes every wall look fought over */
+static void grime(uint32_t *t, int seed)
+{
+    int bx = 12 + hash2(seed, 1, 2) % 40, by = 14 + hash2(seed, 2, 2) % 26;
+    if (hash2(seed, 9, 2) % 3) {
+        for (int i = 0; i < 40; i++) {
+            float a = (hash2(i, seed, 3) % 628) / 100.f, d = (hash2(i, seed, 4) % 100) / 100.f * 9.f;
+            int x = bx + (int)(cosf(a) * d), y = by + (int)(sinf(a) * d * 0.8f);
+            if (x >= 0 && y >= 0 && x < TS && y < TS) t[y * TS + x] = mixC(t[y * TS + x], 0xFF4A0806, 200);
+        }
+        for (int k = 0; k < 3; k++) {
+            int x = bx - 5 + (int)(hash2(k, seed, 5) % 10), len = 6 + (int)(hash2(k, seed, 6) % 16);
+            for (int y = by; y < by + len && y < TS; y++) if (x >= 0 && x < TS) t[y * TS + x] = mixC(t[y * TS + x], 0xFF3A0604, 210);
+        }
+    }
+    if (seed & 1)
+        for (int k = 0; k < 3; k++)
+            for (int s = 0; s < 20; s++) {
+                int x = 34 + k * 4 + s, y = 10 + (int)(s * 1.3f);
+                if (x < TS && y < TS) { t[y * TS + x] = shadeC(t[y * TS + x], 70); if (x + 1 < TS) t[y * TS + x + 1] = shadeC(t[y * TS + x + 1], 140); }
+            }
+    for (int y = 50; y < TS; y++) for (int x = 0; x < TS; x++) t[y * TS + x] = shadeC(t[y * TS + x], 256 - (y - 50) * 9);
+}
 static void buildTextures(void)
 {
     woodPlanks(tex[TX_WOOD], 0xFF7A5A3A, 11);
@@ -229,6 +253,7 @@ static void buildTextures(void)
             if (hash2(x / 4, y / 3, 17) % 23 == 0) c = mixC(c, 0xFF7A4020, 120);   /* rust */
             tex[TX_METAL][y * TS + x] = c;
         }
+    grime(tex[TX_WOOD], 3); grime(tex[TX_STONE], 5); grime(tex[TX_BRICK], 8); grime(tex[TX_PLASTER], 11); grime(tex[TX_METAL], 13);
     /* boundary hedge/fence */
     for (int y = 0; y < TS; y++)
         for (int x = 0; x < TS; x++) {
@@ -316,13 +341,14 @@ enum {
     SP_CRAWL = 27,                    /* crawl0-1, attack, die0-1 : 5 */
     SP_BLOAT = 32,                    /* walk0-1, attack : 3 */
     SP_BRUTE = 35,                    /* 9 */
-    SP_P1 = 44, SP_P2, SP_PDOWN, SP_PU_AMMO, SP_PU_FIRE, SP_PU_GOLD, SP_COUNT
+    SP_P1 = 44, SP_P2, SP_PDOWN, SP_PU_AMMO, SP_PU_FIRE, SP_PU_GOLD, SP_TORCH0, SP_TORCH1, SP_COUNT
 };
 static uint32_t *spr[SP_COUNT];
 static uint32_t *cur;               /* sprite being drawn */
 
 static void sPix(int x, int y, uint32_t c) { if (x >= 0 && y >= 0 && x < SS && y < SS) cur[y * SS + x] = c; }
 static const float LX = -0.45f, LY = -0.55f, LZ = 0.70f;
+static void sTri(float x0, float y0, float x1, float y1, float x2, float y2, uint32_t col, float f);
 static void sBall(float cx, float cy, float rx, float ry, uint32_t col, int seed)
 {
     for (int y = (int)(cy - ry - 1); y <= (int)(cy + ry + 1); y++)
@@ -333,8 +359,8 @@ static void sBall(float cx, float cy, float rx, float ry, uint32_t col, int seed
             float l = nx * LX + ny * LY + nz * LZ;
             float f = 0.38f + 0.78f * (l > 0 ? l : 0) + (d > 0.85f ? -0.12f : 0.f);
             f = (floorf(f * 4.f) + 0.5f) / 4.f;                      /* 4 flat tones: pixel-art shading */
-            uint32_t c = scaleRGB(col, f);
-            if (seed) c = noisy(c, x / 2, y / 2, seed, 8);
+            uint32_t c = (col >> 24) == 0xFE ? col : scaleRGB(col, f);
+            if (seed && (col >> 24) != 0xFE) c = noisy(c, x / 2, y / 2, seed, 8);
             sPix(x, y, c);
         }
 }
@@ -401,8 +427,8 @@ static void buildDeathFrames(int base)
 }
 static void powerFrame(uint32_t c, const char *glyph)
 {
-    sBall(64, 84, 30, 30, scaleRGB(c, 0.5f), 0);
-    sBall(64, 84, 24, 24, c, 0);
+    sBall(64, 84, 30, 30, EM(scaleRGB(c, 0.6f)), 0);
+    sBall(64, 84, 24, 24, EM(c), 0);
     drawTextBuf(cur, SS, SS, 64 - textW(glyph, 4) / 2, 70, 4, 0xFF101010, glyph, 0, 0, 0, SS, SS);
     sOutline(cur);
 }
@@ -454,7 +480,7 @@ static void locustFrame(LocLook *L, int f, int seed)
     /* "their faces were as the faces of men" */
     sBall(64, 34, 12, 15, L->skin, seed + 3);
     sBall(59, 31, 3, 2, 0xFF1A1010, 0); sBall(69, 31, 3, 2, 0xFF1A1010, 0);
-    sPix(59, 31, 0xFFFF5020); sPix(69, 31, 0xFFFF5020);
+    sTri(56, 30, 62, 31, 57, 33, EM(0xFFFF5020), 1.f); sTri(72, 30, 66, 31, 71, 33, EM(0xFFFF5020), 1.f);   /* burning eyes */
     sBall(64, 36, 1.5f, 2.5f, scaleRGB(L->skin, 0.7f), 0);
     /* "their teeth were as the teeth of lions" */
     sBall(64, 43, 6, 3.5f, 0xFF2A0A0A, 0);
@@ -472,7 +498,7 @@ static void sTri(float x0, float y0, float x1, float y1, float x2, float y2, uin
     if (fabsf(area) < 0.01f) return;
     int minx = (int)floorf(fminf(x0, fminf(x1, x2))), maxx = (int)ceilf(fmaxf(x0, fmaxf(x1, x2)));
     int miny = (int)floorf(fminf(y0, fminf(y1, y2))), maxy = (int)ceilf(fmaxf(y0, fmaxf(y1, y2)));
-    uint32_t c = scaleRGB(col, f);
+    uint32_t c = (col >> 24) == 0xFE ? col : scaleRGB(col, f);
     for (int y = miny; y <= maxy; y++)
         for (int x = minx; x <= maxx; x++) {
             float px = x + 0.5f, py = y + 0.5f;
@@ -495,7 +521,7 @@ static void sClaws(float x, float y, float dir, uint32_t col)
 static void frogFrame(int f)
 {
     float up = f == 1 ? -10.f : 0.f;
-    uint32_t sk = 0xFF34502A, dark = 0xFF141E10, spike = 0xFF1C2814, eye = 0xFFE8E030, bone = 0xFFD8CCB0;
+    uint32_t sk = 0xFF34502A, dark = 0xFF141E10, spike = 0xFF1C2814, eye = EM(0xFFE8F030), bone = 0xFFD8CCB0;
     for (int i = 0; i < 5; i++) sTri(30 + hash2(i, f, 3) % 64, 70 + hash2(i, f, 4) % 20 + up, 36 + hash2(i, f, 3) % 64, 60 + hash2(i, f, 4) % 20 + up, 42 + hash2(i, f, 3) % 64, 72 + hash2(i, f, 4) % 20 + up, 0xFF4A4448, 1.f);
     /* haunches and back legs */
     sTri(14, 124, 40, 94 + up, 54, 118, sk, 0.75f); sTri(114, 124, 88, 94 + up, 74, 118, sk, 0.7f);
@@ -531,7 +557,7 @@ static void frogFrame(int f)
 static void fallenFrame(int f)
 {
     float flap = f == 1 ? 9.f : 0.f, st = f == 1 ? 3.f : -3.f;
-    uint32_t wing = 0xFF3E1612, bone = 0xFF1A0806, skin = 0xFF8C2618, fur = 0xFF2A1410, horn = 0xFFD8CCB0, eye = 0xFFFFD020, dark = 0xFF200806;
+    uint32_t wing = 0xFF3E1612, bone = 0xFF1A0806, skin = 0xFF8C2618, fur = 0xFF2A1410, horn = 0xFFD8CCB0, eye = EM(0xFFFFE030), dark = 0xFF200806;
     /* bat wings */
     for (int s = -1; s <= 1; s += 2) {
         float Sx = 64 + s * 16, Sy = 44, Ex = 64 + s * 50, Ey = 8 + flap;
@@ -571,6 +597,10 @@ static void fallenFrame(int f)
     sLimb(64, 30, 64, 40, 5, 5, skin, 0);
     sQuad(54, 12, 74, 12, 71, 28, 57, 28, skin, 1.1f);
     sTri(57, 28, 71, 28, 64, 38, skin, 0.9f);
+    /* molten cracks glowing through the hide */
+    sLimb(52, 48, 58, 60, 0.7f, 0.7f, EM(0xFFFF6010), 0); sLimb(58, 60, 54, 70, 0.7f, 0.7f, EM(0xFFFF6010), 0);
+    sLimb(76, 50, 70, 62, 0.7f, 0.7f, EM(0xFFFF8020), 0); sLimb(64, 74, 66, 84, 0.7f, 0.7f, EM(0xFFFF6010), 0);
+    sQuad(58, 28, 70, 28, 68, 32, 60, 32, EM(0xFFC02008), 1.f);
     sTri(54, 14, 48, 8, 55, 20, skin, 1.f); sTri(74, 14, 80, 8, 73, 20, skin, 0.9f);           /* pointed ears */
     for (int s = -1; s <= 1; s += 2) { sLimb(64 + s * 7, 13, 64 + s * 16, 5, 3, 2.2f, horn, 0); sLimb(64 + s * 16, 5, 64 + s * 13, 0, 2.2f, 1, horn, 0); }
     sTri(56, 17, 63, 20, 57, 21, eye, 1.f); sTri(72, 17, 65, 20, 71, 21, eye, 1.f);
@@ -631,7 +661,7 @@ static void beastFrame(int f)
         sTri(x - 7, y, x, y - 8, x, y + 9, pelt, 1.2f);
         sTri(x - 4, y + 3, x + 4, y + 3, x, y + 9, dark, 1.f);
         sTri(x - 3, y + 3, x - 1, y + 3, x - 2, y + 7, horn, 1.f); sTri(x + 1, y + 3, x + 3, y + 3, x + 2, y + 7, horn, 1.f);
-        sTri(x - 5, y - 2, x - 1, y - 1, x - 4, y, 0xFFFF3020, 1.f); sTri(x + 5, y - 2, x + 1, y - 1, x + 4, y, 0xFFFF3020, 1.f);
+        sTri(x - 5, y - 2, x - 1, y - 1, x - 4, y, EM(0xFFFF3020), 1.f); sTri(x + 5, y - 2, x + 1, y - 1, x + 4, y, EM(0xFFFF3020), 1.f);
     }
     sOutline(cur);
 }
@@ -639,20 +669,25 @@ static void beastFrame(int f)
 static void angelFrame(int who)
 {
     uint32_t armor = who ? 0xFFB8C2D0 : 0xFFD8A838, cloak = who ? 0xFF2850B0 : 0xFFA82020;
-    uint32_t hair = who ? 0xFFE8C870 : 0xFF3A2410, glow = who ? 0xFF30D8FF : 0xFFFF8A20;
-    uint32_t feather = 0xFFF2F0E8, skin = 0xFFE0B090, gold = 0xFFF0D060, dark = 0xFF2A1A10;
+    uint32_t hair = who ? 0xFFE8C870 : 0xFF3A2410, glow = who ? EM(0xFF30D8FF) : EM(0xFFFF8A20);
+    uint32_t feather = 0xFFF2F0E8, skin = 0xFFE0B090, gold = 0xFFF0D060;
     /* great white wings */
     for (int s = -1; s <= 1; s += 2) {
-        float lit = s < 0 ? 1.12f : 0.9f;
-        for (int k = 6; k >= 0; k--) {
-            float tx = 64 + s * (22 + k * 6.5f), ty = 4 + k * 11.f;
-            float bx = 64 + s * (12 + k * 1.5f), by = 38 + k * 4.f;
-            sTri(bx - 3, by, bx + 3, by + 2, tx, ty, feather, (k & 1) ? lit : lit * 0.86f);
+        float lit = s < 0 ? 1.12f : 0.92f;
+        float Sx = 64 + s * 14, Sy = 42, Tx = 64 + s * 58, Ty = 2;      /* wing arm: shoulder up and out to the tip */
+        /* long flight feathers hanging from the wing arm */
+        for (int k = 8; k >= 0; k--) {
+            float u = k / 8.f, bx = Sx + (Tx - Sx) * u, by = Sy + (Ty - Sy) * u;
+            float fx = bx + s * (3 + 8 * u), fy = by + 40 - 10 * u;
+            sTri(bx - 4, by, bx + 4, by, fx, fy, feather, (k & 1) ? lit : lit * 0.84f);
+            sLimb(bx, by, fx, fy, 0.5f, 0.5f, scaleRGB(feather, 0.7f), 0);
         }
-        for (int k = 0; k < 4; k++) {
-            float tx = 64 + s * (22 + k * 5.f), ty = 22 + k * 8.f;
-            sTri(64 + s * 12, 38 + k * 3, 64 + s * 14, 46 + k * 3, tx, ty, feather, lit * 1.05f);
+        /* soft covert feathers along the top of the arm */
+        for (int k = 0; k <= 6; k++) {
+            float u = k / 6.f, bx = Sx + (Tx - Sx) * u, by = Sy + (Ty - Sy) * u;
+            sTri(bx - 5, by - 2, bx + 5, by - 2, bx + s * 2, by + 14, feather, lit * 1.08f);
         }
+        sLimb(Sx, Sy, Tx, Ty, 2.5f, 1.5f, scaleRGB(feather, 1.05f), 0);
     }
     /* cloak hanging behind */
     sQuad(44, 40, 84, 40, 94, 118, 34, 118, cloak, 0.8f);
@@ -681,13 +716,25 @@ static void angelFrame(int who)
     sBall(64, 22, 10, 12, skin, 0);
     if (who) sQuad(53, 10, 75, 10, 75, 16, 53, 16, hair, 1.1f);
     else { sBall(58, 11, 5, 4, hair, 0); sBall(64, 9, 6, 4, hair, 0); sBall(70, 11, 5, 4, hair, 0); }  /* Michael's dark curls */
-    sPix(60, 22, dark); sPix(68, 22, dark); sLimb(61, 28, 67, 28, 0.5f, 0.5f, 0xFF9A5A40, 0);
+    sQuad(57, 21, 62, 21, 62, 23, 57, 23, EM(who ? 0xFFC0F0FF : 0xFFFFF0B0), 1.f); sQuad(66, 21, 71, 21, 71, 23, 66, 23, EM(who ? 0xFFC0F0FF : 0xFFFFF0B0), 1.f); sLimb(61, 28, 67, 28, 0.5f, 0.5f, 0xFF9A5A40, 0);
     /* halo */
     for (int k = 0; k < 24; k++) {
         float a0 = k * 2.f * PI_F / 24.f, a1 = (k + 1) * 2.f * PI_F / 24.f;
-        sLimb(64 + cosf(a0) * 15, 4 + sinf(a0) * 3.5f, 64 + cosf(a1) * 15, 4 + sinf(a1) * 3.5f, 1.3f, 1.3f, gold, 0);
+        sLimb(64 + cosf(a0) * 15, 4 + sinf(a0) * 3.5f, 64 + cosf(a1) * 15, 4 + sinf(a1) * 3.5f, 1.6f, 1.6f, EM(0xFFFFE070), 0);
     }
     sOutline(cur);
+}
+/* wall torch: iron bracket, wooden haft and a living flame */
+static void torchFrame(int f)
+{
+    float sw = f ? 3.f : -3.f;
+    sQuad(61, 72, 67, 72, 66, 104, 62, 104, 0xFF4A2A14, 1.f);
+    sQuad(54, 64, 74, 64, 70, 74, 58, 74, 0xFF3A3A42, 1.1f);
+    sLimb(56, 94, 72, 94, 1.2f, 1.2f, 0xFF2A2A30, 0);
+    sTri(52, 66, 76, 66, 64 + sw, 26, EM(0xFFC01808), 1.f);
+    sTri(55, 66, 73, 66, 64 - sw * 0.6f, 36, EM(0xFFFF6A10), 1.f);
+    sTri(58, 66, 70, 66, 64 + sw * 0.3f, 46, EM(0xFFFFC040), 1.f);
+    sTri(61, 66, 67, 66, 64, 54, EM(0xFFFFF8C0), 1.f);
 }
 static void buildSprites(void)
 {
@@ -717,6 +764,8 @@ static void buildSprites(void)
     cur = spr[SP_PU_AMMO]; powerFrame(0xFF60D060, "A");
     cur = spr[SP_PU_FIRE]; powerFrame(0xFFFF6030, "F");
     cur = spr[SP_PU_GOLD]; powerFrame(0xFFFFD030, "$");
+    cur = spr[SP_TORCH0]; torchFrame(0);
+    cur = spr[SP_TORCH1]; torchFrame(1);
     for (int i = 0; i < SP_COUNT; i++) pixelArt(spr[i]);
 }
 
@@ -1087,6 +1136,8 @@ enum { GS_TITLE, GS_OPTIONS, GS_PLAY, GS_OVER, GS_WIN };
 static int gameState = GS_TITLE, paused, menuSel, optSel;
 static float flowTimer;
 #define WIN_WAVE 99
+static void placeTorches(void);
+static void addFlash(float x, float y, float r, float g, float b, float rad, float life);
 
 static void addPoints(Player *p, int n) { p->points += goldT > 0.f ? n * 2 : n; }
 static void say(Player *p, const char *s) { strncpy(p->msg, s, 47); p->msg[47] = 0; p->msgT = 2.2f; }
@@ -1142,6 +1193,7 @@ static void resetGame(int players, int m)
 {
     buildMap(m);
     computeReach();
+    placeTorches();
     memset(pl, 0, sizeof(pl)); memset(zs, 0, sizeof(zs)); memset(pus, 0, sizeof(pus)); memset(parts, 0, sizeof(parts));
     nPlayers = players;
     for (int i = 0; i < 2; i++) {
@@ -1232,7 +1284,8 @@ static void dropPower(float x, float y)
 static void killZombie(Zombie *z, Player *by);
 static void explode(float x, float y)
 {
-    spawnParts(x, y, 0.5f, 30, 0xFFFF7020, 2.5f, 0.12f);
+    spawnParts(x, y, 0.5f, 30, EM(0xFFFF7020), 2.5f, 0.12f);
+    addFlash(x, y, 1.8f, 0.8f, 0.25f, 5.5f, 0.9f);
     spawnParts(x, y, 0.5f, 12, 0xFF6A1010, 2.0f, 0.10f);
     playV(V_NOISE, 0.9f, 0, 0, 0.8f, 0.08f, 0);
     for (int i = 0; i < 2; i++) {
@@ -1257,6 +1310,8 @@ static void killZombie(Zombie *z, Player *by)
     if (by) { addPoints(by, pts); by->kills++; by->killT = 0.25f; }
     playV(V_GROAN, 0.5f, z->type == ZT_BRUTE ? 35.f : 55.f, 0, 0.35f, 0, 0);
     spawnParts(z->x, z->y, 0.6f, 10, 0xFF7A1010, 1.5f, 0.07f);
+    spawnParts(z->x, z->y, 0.5f, 14, EM(0xFFFF8A20), 2.0f, 0.035f);       /* bursts into embers */
+    addFlash(z->x, z->y, 0.9f, 0.4f, 0.12f, 2.6f, 0.45f);
     if (z->type == ZT_BRUTE) { dropPower(z->x, z->y); sayAll("THE BEAST IS SLAIN! +500"); }
     else if (frand() < 0.03f) dropPower(z->x, z->y);
     if (z->type == ZT_BLOAT) { z->on = 0; explode(z->x, z->y); }
@@ -1730,6 +1785,133 @@ static void updateGame(float dt)
 /* ------------------------------------------------------------------ */
 /* Rendering                                                          */
 /* ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ */
+/* Lighting: a coloured light grid rebuilt every frame                 */
+/* ------------------------------------------------------------------ */
+#define LGW (MW + 1)
+#define LGH (MH + 1)
+static float lfR[LGH][LGW], lfG[LGH][LGW], lfB[LGH][LGW];
+static int LRi[LGH][LGW], LGi[LGH][LGW], LBi[LGH][LGW];
+typedef struct { float x, y; } Torch;
+#define MAXTORCH 48
+static Torch torches[MAXTORCH];
+static int nTorches;
+typedef struct { float x, y, r, g, b, rad, life, maxLife; } Flash;
+#define MAXFLASH 16
+static Flash flashes[MAXFLASH];
+
+static void addFlash(float x, float y, float r, float g, float b, float rad, float life)
+{
+    for (int i = 0; i < MAXFLASH; i++) if (flashes[i].life <= 0) { Flash *f = &flashes[i]; f->x = x; f->y = y; f->r = r; f->g = g; f->b = b; f->rad = rad; f->life = f->maxLife = life; return; }
+}
+/* wall torches on room walls, spaced out */
+static void placeTorches(void)
+{
+    nTorches = 0;
+    static const int d[4][2] = {{1,0},{-1,0},{0,1},{0,-1}};
+    for (int y = 1; y < MH - 1; y++)
+        for (int x = 1; x < MW - 1; x++) {
+            if (map[y][x] != 'W' || hash2(x, y, 41) % 5 != 0 || nTorches >= MAXTORCH) continue;
+            for (int k = 0; k < 4; k++) {
+                int fx = x + d[k][0], fy = y + d[k][1];
+                if (!isFloorC(cellC(fx, fy))) continue;
+                int near = 0;
+                for (int t = 0; t < nTorches; t++) if (fabsf(torches[t].x - (fx + 0.5f)) + fabsf(torches[t].y - (fy + 0.5f)) < 4.f) near = 1;
+                if (near) break;
+                torches[nTorches].x = fx + 0.5f - d[k][0] * 0.40f;
+                torches[nTorches].y = fy + 0.5f - d[k][1] * 0.40f;
+                nTorches++;
+                break;
+            }
+        }
+}
+static void lightAdd(float x, float y, float r, float g, float b, float rad)
+{
+    int x0 = (int)(x - rad), x1 = (int)(x + rad) + 1, y0 = (int)(y - rad), y1 = (int)(y + rad) + 1;
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 > MW) x1 = MW;
+    if (y1 > MH) y1 = MH;
+    float r2 = rad * rad;
+    for (int vy = y0; vy <= y1; vy++)
+        for (int vx = x0; vx <= x1; vx++) {
+            float dx = vx - x, dy = vy - y, d2 = dx * dx + dy * dy;
+            if (d2 >= r2) continue;
+            float f = 1.f - sqrtf(d2) / rad; f *= f;
+            lfR[vy][vx] += r * f; lfG[vy][vx] += g * f; lfB[vy][vx] += b * f;
+        }
+}
+static void computeLights(float t, float dt)
+{
+    for (int vy = 0; vy < LGH; vy++)
+        for (int vx = 0; vx < LGW; vx++) {
+            char c = cellC(vx < MW ? vx : MW - 1, vy < MH ? vy : MH - 1);
+            int out = isOutsideC(c) || c == '#';
+            lfR[vy][vx] = out ? 0.85f : 0.52f; lfG[vy][vx] = out ? 0.40f : 0.43f; lfB[vy][vx] = out ? 0.30f : 0.42f;
+        }
+    for (int i = 0; i < nTorches; i++) {
+        float f = 0.86f + 0.10f * sinf(t * 11.f + i * 1.7f) + 0.06f * sinf(t * 23.f + i * 3.1f);
+        lightAdd(torches[i].x, torches[i].y, 1.3f * f, 0.72f * f, 0.30f * f, 5.6f);
+    }
+    static const int d[4][2] = {{1,0},{-1,0},{0,1},{0,-1}};
+    for (int y = 0; y < MH; y++)
+        for (int x = 0; x < MW; x++) {
+            char c = map[y][x];
+            if (c == 'B') {
+                float k = 0.30f + 0.11f * (6 - boards[y][x]);
+                for (int q = 0; q < 4; q++) if (isFloorC(cellC(x + d[q][0], y + d[q][1])))
+                    lightAdd(x + 0.5f + d[q][0] * 0.6f, y + 0.5f + d[q][1] * 0.6f, 0.95f * k, 0.25f * k, 0.10f * k, 3.2f);
+            } else if (c == 'e' && trapOn) {
+                float fl = 0.6f + 0.4f * (float)(hash2(x, y, (int)(t * 20.f)) & 1);
+                lightAdd(x + 0.5f, y + 0.5f, 0.10f * fl, 0.30f * fl, 0.50f * fl, 1.8f);
+            }
+        }
+    for (int i = 0; i < 2; i++) {
+        Player *p = &pl[i];
+        if (!p->on || p->state == ST_DEAD) continue;
+        lightAdd(p->x, p->y, 0.22f, 0.20f, 0.14f, 2.2f);                 /* the archangels glow faintly */
+        if (p->flash > 0) lightAdd(p->x + cosf(p->ang) * 0.5f, p->y + sinf(p->ang) * 0.5f, 1.4f, 1.05f, 0.6f, 5.5f);
+    }
+    for (int i = 0; i < MAXPU; i++) if (pus[i].on) {
+        static const float pc[3][3] = {{0.2f, 0.7f, 0.2f}, {0.9f, 0.4f, 0.1f}, {0.9f, 0.75f, 0.2f}};
+        lightAdd(pus[i].x, pus[i].y, pc[pus[i].type][0], pc[pus[i].type][1], pc[pus[i].type][2], 2.2f);
+    }
+    for (int i = 0; i < MAXFLASH; i++) if (flashes[i].life > 0) {
+        Flash *f = &flashes[i];
+        float k = f->life / f->maxLife;
+        lightAdd(f->x, f->y, f->r * k, f->g * k, f->b * k, f->rad);
+        f->life -= dt;
+    }
+    for (int vy = 0; vy < LGH; vy++)
+        for (int vx = 0; vx < LGW; vx++) {
+            LRi[vy][vx] = clampi((int)(lfR[vy][vx] * 256.f), 0, 640);
+            LGi[vy][vx] = clampi((int)(lfG[vy][vx] * 256.f), 0, 640);
+            LBi[vy][vx] = clampi((int)(lfB[vy][vx] * 256.f), 0, 640);
+        }
+}
+static inline void lightAt(float x, float y, int *r, int *g, int *b)
+{
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
+    if (x > MW - 0.01f) x = MW - 0.01f;
+    if (y > MH - 0.01f) y = MH - 0.01f;
+    int ix = (int)x, iy = (int)y, fx = (int)((x - ix) * 256.f), fy = (int)((y - iy) * 256.f);
+    int w00 = (256 - fx) * (256 - fy), w10 = fx * (256 - fy), w01 = (256 - fx) * fy, w11 = fx * fy;
+    *r = (LRi[iy][ix] * w00 + LRi[iy][ix + 1] * w10 + LRi[iy + 1][ix] * w01 + LRi[iy + 1][ix + 1] * w11) >> 16;
+    *g = (LGi[iy][ix] * w00 + LGi[iy][ix + 1] * w10 + LGi[iy + 1][ix] * w01 + LGi[iy + 1][ix + 1] * w11) >> 16;
+    *b = (LBi[iy][ix] * w00 + LBi[iy][ix + 1] * w10 + LBi[iy + 1][ix] * w01 + LBi[iy + 1][ix + 1] * w11) >> 16;
+}
+/* colour * fog * coloured light */
+static inline uint32_t litC(uint32_t c, int fog, int lr, int lg, int lb)
+{
+    int r = (((c >> 16) & 255) * ((fog * lr) >> 8)) >> 8;
+    int g = (((c >> 8) & 255) * ((fog * lg) >> 8)) >> 8;
+    int b = ((c & 255) * ((fog * lb) >> 8)) >> 8;
+    if (r > 255) r = 255;
+    if (g > 255) g = 255;
+    if (b > 255) b = 255;
+    return 0xFF000000 | ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
+}
 static int colTop[FBW], colBot[FBW];
 typedef struct { float x, y, scale, z; int sp, flip; uint32_t tint, solid; float d; } BB;
 static void drawBB(Player *p, BB *b, int vx, int vy, int vw, int vh, int horizon, float eye, float P,
@@ -1749,8 +1931,13 @@ static void drawBB(Player *p, BB *b, int vx, int vy, int vw, int vh, int horizon
     int w = h;
     int x0 = sx - w / 2;
     int sh = fogShade(ty);
+    int lr, lg, lb;
+    lightAt(b->x, b->y, &lr, &lg, &lb);
+    if (lr < 70) lr = 70;                       /* keep silhouettes readable in the dark */
+    if (lg < 50) lg = 50;
+    if (lb < 50) lb = 50;
     if (b->solid) {
-        uint32_t c = shadeC(b->solid, sh);
+        uint32_t c = (b->solid >> 24) == 0xFE ? (b->solid | 0xFF000000) : litC(b->solid, sh, lr, lg, lb);
         for (int x = x0 < 0 ? 0 : x0; x < x0 + w && x < vw; x++) {
             if (ty >= zbuf[vx + x]) continue;
             for (int y = top < 0 ? 0 : top; y < bottom && y < vh; y++) fb[(vy + y) * FBW + vx + x] = c;
@@ -1766,8 +1953,9 @@ static void drawBB(Player *p, BB *b, int vx, int vy, int vw, int vh, int horizon
             int trow = (y - top) * SS / h;
             uint32_t c = img[trow * SS + tcol];
             if (!(c & 0xFF000000)) continue;
+            if ((c >> 24) == 0xFE) { fb[(vy + y) * FBW + vx + x] = c | 0xFF000000; continue; }   /* glowing eyes, halos, fire */
             if (b->tint) c = mixC(c, b->tint, 70);
-            fb[(vy + y) * FBW + vx + x] = shadeC(c, sh);
+            fb[(vy + y) * FBW + vx + x] = litC(c, sh, lr, lg, lb);
         }
     }
 }
@@ -1796,7 +1984,7 @@ static void gPart(const GPart *q)
             if (u < -1.f || u > 1.f) continue;
             float f = u > 0.45f ? 1.35f : u < -0.5f ? 0.62f : 1.f;
             if (t > q->t1 - 0.03f) f *= 0.8f;                       /* far end slightly darker */
-            gbuf[y * GBW + x] = scaleRGB(q->col, f);
+            gbuf[y * GBW + x] = (q->col >> 24) == 0xFE ? q->col : scaleRGB(q->col, f);
         }
 }
 static void drawWeapon(Player *p, int vx, int vy, int vw, int vh)
@@ -1822,7 +2010,7 @@ static void drawWeapon(Player *p, int vx, int vy, int vw, int vh)
     uint32_t metal = 0xFF5A5E68, dark = 0xFF2A2C32, wood = 0xFF8A5A30;
     uint32_t skin = p == &pl[1] ? 0xFFB8C2D0 : 0xFFD8A838;                          /* archangel gauntlet */
     uint32_t sleeve = p == &pl[1] ? 0xFF2850B0 : 0xFFA82020;                        /* cloak sleeve */
-    uint32_t glow = p == &pl[1] ? 0xFF30D8FF : 0xFFFF8A20;
+    uint32_t glow = p == &pl[1] ? EM(0xFF30D8FF) : EM(0xFFFF8A20);
     if (p->lvl[p->cur]) { metal = mixC(metal, 0xFF7070FF, 50 * p->lvl[p->cur]); dark = mixC(dark, 0xFF4040C0, 40 * p->lvl[p->cur]); }
     GPart parts[10]; int n = 0;
     switch (w) {
@@ -1877,17 +2065,21 @@ static void drawWeapon(Player *p, int vx, int vy, int vw, int vh)
             for (int x = -9; x <= 9; x++) {
                 int ad = abs(x) + abs(y), ax_ = abs(x), ay_ = abs(y);
                 uint32_t c = 0;
-                if (ad <= 3) c = 0xFFFFFFE0;
-                else if (ad <= 6 || (ax_ <= 1 && ay_ <= 9) || (ay_ <= 1 && ax_ <= 9)) c = 0xFFFFC040;
-                else if (ad <= 8 && ((x + y) & 1)) c = 0xFFFF7020;
+                if (ad <= 3) c = EM(0xFFFFFFE0);
+                else if (ad <= 6 || (ax_ <= 1 && ay_ <= 9) || (ay_ <= 1 && ax_ <= 9)) c = EM(0xFFFFC040);
+                else if (ad <= 8 && ((x + y) & 1)) c = EM(0xFFFF7020);
                 int px = (int)mx + x, py = (int)my + y;
                 if (c && px >= 0 && py >= 0 && px < gW && py < gH) gbuf[py * GBW + px] = c;
             }
     }
+    int lr, lg, lb;
+    lightAt(p->x, p->y, &lr, &lg, &lb);
+    lr = clampi(lr + 90, 150, 420); lg = clampi(lg + 90, 140, 400); lb = clampi(lb + 90, 140, 400);
     for (int y = 0; y < gH; y++)
         for (int x = 0; x < gW; x++) {
             uint32_t c = gbuf[y * GBW + x];
             if (!c) continue;
+            c = (c >> 24) == 0xFE ? (c | 0xFF000000) : litC(c, 256, lr, lg, lb);
             for (int yy = 0; yy < k; yy++)
                 for (int xx = 0; xx < k; xx++) {
                     int px = vx + x * k + xx, py = vy + y * k + yy;
@@ -1932,12 +2124,14 @@ static void renderView(int pi, int vx, int vy, int vw, int vh)
         float lh = P / perp;
         int top = horizon - (int)(lh * (1.f - eye)), bottom = horizon + (int)(lh * eye);
         int sh = fogShade(perp) * (side ? 205 : 256) / 256;
+        int lr, lg, lb;
+        lightAt(p->x + rdx * (perp - 0.06f), p->y + rdy * (perp - 0.06f), &lr, &lg, &lb);
         const uint32_t *t = tex[texFor(mx, my)];
         int y0 = top < 0 ? 0 : top, y1 = bottom > vh ? vh : bottom;
         float step = TS / lh, tpos = (y0 - top) * step;
         for (int y = y0; y < y1; y++, tpos += step) {
             int ty = (int)tpos; if (ty > TS - 1) ty = TS - 1;
-            fb[(vy + y) * FBW + vx + x] = shadeC(t[ty * TS + texX], sh);
+            fb[(vy + y) * FBW + vx + x] = litC(t[ty * TS + texX], sh, lr, lg, lb);
         }
         colTop[x] = y0; colBot[x] = y1;
     }
@@ -1951,38 +2145,65 @@ static void renderView(int pi, int vx, int vy, int vw, int vh)
         float stX = rowD * (rdx1 - rdx0) / vw, stY = rowD * (rdy1 - rdy0) / vw;
         int sh = fogShade(rowD);
         uint32_t *row = &fb[(vy + y) * FBW + vx];
-        uint32_t sky = mixC(0xFF1A0404, 0xFF6A1C08, clampi((y * 256) / (horizon > 1 ? horizon : 1), 0, 256));
+        uint32_t sky = mixC(0xFF140303, 0xFF7A200A, clampi((y * 256) / (horizon > 1 ? horizon : 1), 0, 256));
+        int pulse = 128 + (int)(sinf(SDL_GetTicks() / 400.f) * 100.f);
+        int lr = 256, lg = 256, lb = 256;
         for (int x = 0; x < vw; x++, fx += stX, fy += stY) {
+            if ((x & 3) == 0) lightAt(fx + stX * 2.f, fy + stY * 2.f, &lr, &lg, &lb);   /* light sampled every 4 pixels */
             if (floorRow ? (y < colBot[x]) : (y >= colTop[x])) continue;
             int cx = (int)fx, cy = (int)fy;
             char c = cellC(cx, cy);
             uint32_t col;
             if (floorRow) {
                 if (isOutsideC(c) || c == '#') {
-                    uint32_t g = (hash2((int)(fx * 6.f), (int)(fy * 6.f), 7) & 3) ? 0xFF2A1612 : 0xFF341C14;
-                    col = shadeC(g, sh * 3 / 4);
+                    float u = fx - cx, v = fy - cy;
+                    /* scorched earth split by glowing lava cracks */
+                    if ((hash2(cx, cy, 31) & 3) == 0 && (fabsf(u - v * 0.8f - 0.1f) < 0.045f || fabsf(u + v - 1.15f) < 0.035f))
+                        col = mixC(0xFFB02806, 0xFFFFB030, pulse);
+                    else {
+                        uint32_t g = (hash2((int)(fx * 6.f), (int)(fy * 6.f), 7) & 3) ? 0xFF3A2018 : 0xFF48281C;
+                        col = litC(g, sh, lr, lg, lb);
+                    }
                 } else if (c == 'e') {
                     float u = fx - cx, v = fy - cy;
                     int grid = (u < 0.08f || v < 0.08f || (u > 0.45f && u < 0.55f));
                     uint32_t g = grid ? 0xFF6A7078 : 0xFF2C3036;
-                    if (trapOn && grid && (hash2(cx, cy, (int)(SDL_GetTicks() / 60)) & 1)) g = 0xFF90E8FF;
-                    col = shadeC(g, sh);
-                } else col = shadeC(((cx + cy) & 1) ? M->floorA : M->floorB, sh);
+                    if (trapOn && grid && (hash2(cx, cy, (int)(SDL_GetTicks() / 60)) & 1)) col = 0xFF90E8FF;
+                    else col = litC(g, sh, lr, lg, lb);
+                } else {
+                    float u = fx - cx, v = fy - cy;
+                    uint32_t g = ((cx + cy) & 1) ? M->floorA : M->floorB;
+                    if (u < 0.04f || v < 0.04f) g = shadeC(g, 150);                                 /* tile seams */
+                    else if ((hash2(cx, cy, 13) % 7) == 0 && (u - 0.5f) * (u - 0.5f) + (v - 0.4f) * (v - 0.4f) < 0.05f) g = 0xFF3A0806; /* old blood */
+                    col = litC(g, sh, lr, lg, lb);
+                }
             } else {
                 if (isOutsideC(c) || c == '#') {
+                    float a = atan2f(fy - p->y, fx - p->x);
                     col = sky;
-                    int bucket = (int)((atan2f(fy - p->y, fx - p->x) + PI_F) * 300.f);
-                    if (hash2(bucket, y, 77) % 173 == 0) col = 0xFFFFA040;
+                    /* the blood moon */
+                    float da = a + 2.2f;
+                    while (da > PI_F) da -= 2 * PI_F;
+                    while (da < -PI_F) da += 2 * PI_F;
+                    float mx_ = da * P * 0.9f, my_ = (float)(y - horizon * 0.38f), md = mx_ * mx_ + my_ * my_, R = vh * 0.09f;
+                    if (md < R * R) {
+                        col = mixC(0xFF7A0C06, 0xFFE04018, clampi((int)(128 - my_ * 140.f / R), 0, 256));
+                        if (hash2((int)(mx_ / 3), (int)(my_ / 3), 5) % 9 == 0) col = shadeC(col, 170);
+                    } else if (md < R * R * 3.5f) col = mixC(col, 0xFFA02008, (int)(110.f * (1.f - (md - R * R) / (R * R * 2.5f))));
+                    else {
+                        int bucket = (int)((a + PI_F) * 300.f);
+                        if (hash2(bucket, y, 77) % 173 == 0) col = 0xFFFFA040;
+                    }
                 } else {
                     float u = fx - cx;
-                    col = shadeC(u < 0.1f ? shadeC(M->ceil, 150) : M->ceil, sh);
+                    col = litC(u < 0.1f ? shadeC(M->ceil, 150) : M->ceil, sh, lr, lg, lb);
                 }
             }
             row[x] = col;
         }
     }
     /* billboards: zombies, players, power-ups, particles */
-    static BB bb[MAXZ + MAXPU + 2 + MAXPART];
+    static BB bb[MAXZ + MAXPU + 2 + MAXPART + MAXTORCH];
     int n = 0;
     for (int i = 0; i < MAXZ; i++) {
         Zombie *z = &zs[i];
@@ -2019,6 +2240,13 @@ static void renderView(int pi, int vx, int vy, int vw, int vh)
         BB *b = &bb[n++]; memset(b, 0, sizeof(*b));
         b->x = parts[i].x; b->y = parts[i].y; b->z = parts[i].z; b->scale = parts[i].size; b->solid = parts[i].col;
     }
+    for (int i = 0; i < nTorches; i++) {
+        float dx = torches[i].x - p->x, dy = torches[i].y - p->y;
+        if (dx * dx + dy * dy > 400.f) continue;
+        BB *b = &bb[n++]; memset(b, 0, sizeof(*b));
+        b->x = torches[i].x; b->y = torches[i].y; b->z = 0.12f; b->scale = 0.55f;
+        b->sp = ((SDL_GetTicks() / 120 + i) & 1) ? SP_TORCH0 : SP_TORCH1;
+    }
     for (int i = 0; i < n; i++) bb[i].d = (bb[i].x - p->x) * (bb[i].x - p->x) + (bb[i].y - p->y) * (bb[i].y - p->y);
     for (int i = 1; i < n; i++) {
         BB tb = bb[i]; int j = i - 1;
@@ -2027,6 +2255,16 @@ static void renderView(int pi, int vx, int vy, int vw, int vh)
     }
     for (int i = 0; i < n; i++) drawBB(p, &bb[i], vx, vy, vw, vh, horizon, eye, P, dirX, dirY, plX, plY);
     if (p->state == ST_UP) drawWeapon(p, vx, vy, vw, vh);
+    /* dark vignette around the edges */
+    {
+        static int vrow[FBH], vcol[FBW];
+        for (int y = 0; y < vh; y++) { float d = (y - vh * 0.5f) / (vh * 0.5f); vrow[y] = (int)(d * d * 70.f); }
+        for (int x = 0; x < vw; x++) { float d = (x - vw * 0.5f) / (vw * 0.5f); vcol[x] = (int)(d * d * 70.f); }
+        for (int y = 0; y < vh; y++) {
+            uint32_t *row = &fb[(vy + y) * FBW + vx];
+            for (int x = 0; x < vw; x++) { int s = 256 - vrow[y] - vcol[x]; if (s < 256) row[x] = shadeC(row[x], s); }
+        }
+    }
 
     /* HUD */
     int big = (vw >= 600 && vh >= 300) ? 3 : 2;
@@ -2376,6 +2614,7 @@ int main(int argc, char **argv)
             for (int i = 0; i < MAXZ; i++) if (zs[i].on) typesSeen[zs[i].type] = 1;
         }
         Uint64 r0 = SDL_GetPerformanceCounter();
+        if (gameState == GS_PLAY || gameState == GS_OVER || gameState == GS_WIN) computeLights(menuT, paused ? 0.f : frameDt);
         if (gameState == GS_TITLE) renderTitle(menuT);
         else if (gameState == GS_OPTIONS) renderOptions(menuT);
         else {
