@@ -1,7 +1,7 @@
 # Rotwood Hold
 
 An original 1-2 player co-op survival shooter in the Doom style (pixel-art sprites in a 3D world). It runs natively on the Raspberry Pi 400 (and Windows).
-You play the archangels Saint Michael (P1, gold armour and red cloak) and Gabriel (P2, silver armour and blue cloak), and hold out against waves of demons from the Abyss across five maps (Rotwood Farm, Gullwatch Light, Millbrook Mill, Hollow Chapel, Ironvale Depot). Every wave is harder; survive wave 99 to see the dawn. Earn money for every hit and kill, rebuild the window boards, buy doors into
+You play Adam (P1) and Eve (P2), in fig-leaf aprons (Genesis 3:7), and hold out against waves of demons from the Abyss across five maps (Rotwood Farm, Gullwatch Light, Millbrook Mill, Hollow Chapel, Ironvale Depot). Every wave is harder; survive wave 99 to see the dawn. Earn money for every hit and kill, rebuild the window boards, buy doors into
 new rooms and weapons drawn in chalk on the walls, and revive your partner when they go down.
 
 ## Controls
@@ -51,3 +51,21 @@ Upgrade bench (each gun up to +3), electric fence trap ($1000), and a supply she
 
 ## Aim assist
 Made for keyboards and gamepads (there's no mouse aiming). Your view is pulled gently toward the nearest demon in front of you, and shots bend onto it. Set it to Off, Low or High (the default) in Options.
+
+## Campaign
+Seven chapters, each opening with a scripture card (King James Version, public domain). Chapters unlock in order, and your progress is saved.
+
+| # | Chapter | Scripture | Map | Goal |
+|---|---|---|---|---|
+| 1 | The Bottomless Pit | Revelation 9:1-3 | Rotwood Farm | Survive 5 waves |
+| 2 | Unclean Spirits | Revelation 16:13-14 | Millbrook Mill | Survive 6 waves (frog spirits come early) |
+| 3 | The Watchman | Ezekiel 33:6 | Gullwatch Light | Survive 7 waves |
+| 4 | War in Heaven | Revelation 12:7-9 | Hollow Chapel | Survive 8 waves (fallen angels) |
+| 5 | The Beast from the Sea | Revelation 13:1 | Ironvale Depot | Survive 9 waves (a Beast every 3rd wave) |
+| 6 | Armageddon | Revelation 16:16 | Rotwood Farm | Survive 10 waves (everything) |
+| 7 | The Dragon Bound | Revelation 12:3, 20:2 | Hollow Chapel | Survive 6 waves, then slay the great red Dragon |
+
+The Dragon is red, with seven heads, ten horns and seven crowns on its heads (Revelation 12:3), and it breathes fire. The ending card quotes Revelation 21:4.
+
+## Wave sizes
+The number of demons in each wave follows the Fibonacci sequence. Endless mode uses wave N = Fib(N): 1, 1, 2, 3, 5, 8, 13 ... Wave 20 has 6,765 demons and wave 30 has 832,040, so the late waves pour in very fast. Campaign chapters start at the 4th term (3, 5, 8, 13 ...).

@@ -59,7 +59,7 @@ static int fogShade(float d) { return (int)(256.f * clampf(1.25f - d * 0.045f, 0
 /* ------------------------------------------------------------------ */
 /* Font (original 5x7) and 2D drawing                                 */
 /* ------------------------------------------------------------------ */
-static const char FONT_CHARS[] = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ!-./:*~?'()+$%<>";
+static const char FONT_CHARS[] = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ!-./:*~?'()+$%<>,;";
 static const unsigned char FONT[][7] = {
     {0,0,0,0,0,0,0},
     {0x0E,0x11,0x13,0x15,0x19,0x11,0x0E},{0x04,0x0C,0x04,0x04,0x04,0x04,0x0E},
@@ -88,6 +88,7 @@ static const unsigned char FONT[][7] = {
     {0x08,0x04,0x02,0x02,0x02,0x04,0x08},{0x00,0x04,0x04,0x1F,0x04,0x04,0x00},
     {0x04,0x0F,0x14,0x0E,0x05,0x1E,0x04},{0x19,0x19,0x02,0x04,0x08,0x13,0x13},
     {0x02,0x04,0x08,0x10,0x08,0x04,0x02},{0x08,0x04,0x02,0x01,0x02,0x04,0x08},
+    {0x00,0x00,0x00,0x00,0x0C,0x04,0x08},{0x00,0x0C,0x0C,0x00,0x0C,0x04,0x08},
 };
 static int fontIdx(char c)
 {
@@ -355,7 +356,9 @@ enum {
     SP_CRAWL = 27,                    /* crawl0-1, attack, die0-1 : 5 */
     SP_BLOAT = 32,                    /* walk0-1, attack : 3 */
     SP_BRUTE = 35,                    /* 9 */
-    SP_P1 = 44, SP_P2, SP_PDOWN, SP_PU_AMMO, SP_PU_FIRE, SP_PU_GOLD, SP_TORCH0, SP_TORCH1, SP_COUNT
+    SP_P1 = 44, SP_P2, SP_PDOWN, SP_PU_AMMO, SP_PU_FIRE, SP_PU_GOLD, SP_TORCH0, SP_TORCH1,
+    SP_DRAGON,                        /* 9 frames, like the Beast */
+    SP_COUNT = SP_DRAGON + 9
 };
 static uint32_t *spr[SP_COUNT];
 static uint32_t *cur;               /* sprite being drawn */
@@ -679,63 +682,43 @@ static void beastFrame(int f)
     }
     sOutline(cur);
 }
-/* the players are archangels: P1 Saint Michael (gold armour, red cloak), P2 Gabriel (silver armour, blue cloak) */
-static void angelFrame(int who)
+/* the players: Adam (P1) and Eve (P2), simple pixel figures wearing fig-leaf aprons -
+   "they sewed fig leaves together, and made themselves aprons" (Genesis 3:7) */
+static void figLeaf(float x, float y, float s, uint32_t c)
 {
-    uint32_t armor = who ? 0xFFB8C2D0 : 0xFFD8A838, cloak = who ? 0xFF2850B0 : 0xFFA82020;
-    uint32_t hair = who ? 0xFFE8C870 : 0xFF3A2410, glow = who ? EM(0xFF30D8FF) : EM(0xFFFF8A20);
-    uint32_t feather = 0xFFF2F0E8, skin = 0xFFE0B090, gold = 0xFFF0D060;
-    /* great white wings */
-    for (int s = -1; s <= 1; s += 2) {
-        float lit = s < 0 ? 1.12f : 0.92f;
-        float Sx = 64 + s * 14, Sy = 42, Tx = 64 + s * 58, Ty = 2;      /* wing arm: shoulder up and out to the tip */
-        /* long flight feathers hanging from the wing arm */
-        for (int k = 8; k >= 0; k--) {
-            float u = k / 8.f, bx = Sx + (Tx - Sx) * u, by = Sy + (Ty - Sy) * u;
-            float fx = bx + s * (3 + 8 * u), fy = by + 40 - 10 * u;
-            sTri(bx - 4, by, bx + 4, by, fx, fy, feather, (k & 1) ? lit : lit * 0.84f);
-            sLimb(bx, by, fx, fy, 0.5f, 0.5f, scaleRGB(feather, 0.7f), 0);
-        }
-        /* soft covert feathers along the top of the arm */
-        for (int k = 0; k <= 6; k++) {
-            float u = k / 6.f, bx = Sx + (Tx - Sx) * u, by = Sy + (Ty - Sy) * u;
-            sTri(bx - 5, by - 2, bx + 5, by - 2, bx + s * 2, by + 14, feather, lit * 1.08f);
-        }
-        sLimb(Sx, Sy, Tx, Ty, 2.5f, 1.5f, scaleRGB(feather, 1.05f), 0);
+    sQuad(x, y - s, x + s * 0.8f, y, x, y + s * 1.2f, x - s * 0.8f, y, c, 1.f);
+    sLimb(x, y - s * 0.6f, x, y + s, 0.4f, 0.4f, scaleRGB(c, 0.6f), 0);
+}
+static void humanFrame(int who)
+{
+    uint32_t skin = who ? 0xFFE6B696 : 0xFFC08458, hair = who ? 0xFF7A4418 : 0xFF2A1A10;
+    uint32_t leaf = 0xFF3E8A2A, leafD = 0xFF2A6A1C, dark = 0xFF1A1010;
+    /* Eve's long hair falls behind her */
+    if (who) sQuad(48, 14, 80, 14, 84, 74, 44, 74, hair, 0.8f);
+    /* legs and feet */
+    sLimb(57, 84, 56, 121, 6, 5, skin, 0); sLimb(71, 84, 72, 121, 6, 5, skin, 0);
+    sBall(55, 123, 5, 2.5f, scaleRGB(skin, 0.7f), 0); sBall(73, 123, 5, 2.5f, scaleRGB(skin, 0.7f), 0);
+    /* body: broader shoulders for Adam, a narrower waist for Eve */
+    if (!who) { sQuad(44, 40, 84, 40, 76, 86, 52, 86, skin, 0.95f); sTri(44, 40, 64, 40, 64, 86, skin, 1.15f); }
+    else { sQuad(50, 40, 78, 40, 80, 86, 48, 86, skin, 0.95f); sTri(50, 40, 64, 40, 64, 86, skin, 1.15f); }
+    /* arms */
+    float sx = who ? 50.f : 45.f;
+    sLimb(sx, 44, sx - 5, 76, 5, 4, skin, 0); sLimb(128 - sx, 44, 133 - sx, 76, 5, 4, skin, 0);
+    sBall(sx - 5, 78, 4, 4, skin, 0); sBall(133 - sx, 78, 4, 4, skin, 0);
+    /* fig-leaf apron */
+    for (int k = 0; k < 6; k++) figLeaf(48 + k * 6.4f, 84 + (k & 1) * 4, 7, k & 1 ? leafD : leaf);
+    sLimb(46, 80, 82, 80, 0.8f, 0.8f, 0xFF5A3A18, 0);                          /* vine belt */
+    if (who) {                                                                  /* Eve: long hair over the chest, and a leaf garland */
+        sQuad(50, 38, 63, 38, 62, 70, 50, 66, hair, 1.05f);
+        sQuad(65, 38, 78, 38, 78, 66, 66, 70, hair, 0.9f);
+        for (int k = 0; k < 4; k++) figLeaf(54 + k * 7, 40, 3.5f, leaf);
     }
-    /* cloak hanging behind */
-    sQuad(44, 40, 84, 40, 94, 118, 34, 118, cloak, 0.8f);
-    /* armoured legs and boots */
-    sLimb(56, 84, 55, 118, 7, 6, armor, 0); sLimb(72, 84, 73, 118, 7, 6, armor, 0);
-    sQuad(48, 116, 60, 116, 62, 125, 46, 125, scaleRGB(armor, 0.6f), 1.f); sQuad(68, 116, 80, 116, 82, 125, 66, 125, scaleRGB(armor, 0.6f), 1.f);
-    /* leather strip skirt */
-    for (int k = 0; k < 6; k++) sQuad(46 + k * 6, 80, 51 + k * 6, 80, 51 + k * 6, 94, 46 + k * 6, 94, k & 1 ? 0xFF6A4020 : 0xFF7A4A26, 1.f);
-    /* breastplate, lit from the left */
-    sQuad(44, 40, 84, 40, 80, 80, 48, 80, armor, 0.95f);
-    sTri(44, 40, 64, 40, 64, 80, armor, 1.2f);
-    sLimb(56, 50, 56, 58, 0.6f, 0.6f, scaleRGB(armor, 0.6f), 0); sLimb(72, 50, 72, 58, 0.6f, 0.6f, scaleRGB(armor, 0.6f), 0);
-    sQuad(46, 78, 82, 78, 82, 82, 46, 82, gold, 1.f);
-    sQuad(64, 56, 68, 60, 64, 64, 60, 60, glow, 1.f);                              /* glowing emblem */
-    sLimb(48, 76, 80, 76, 0.7f, 0.7f, glow, 0);
-    /* shoulder plates */
-    sQuad(36, 38, 50, 36, 52, 48, 38, 50, armor, 1.15f); sQuad(78, 36, 92, 38, 90, 50, 76, 48, armor, 0.85f);
-    /* arms holding a rifle across the body */
-    sLimb(42, 46, 40, 66, 6, 5, armor, 0); sLimb(86, 46, 88, 66, 6, 5, armor, 0);
-    sQuad(30, 68, 82, 66, 82, 72, 30, 74, 0xFF2A2C32, 1.f);
-    sLimb(32, 70, 80, 68, 0.6f, 0.6f, glow, 0);
-    sBall(41, 70, 6, 5, scaleRGB(armor, 0.8f), 0); sBall(87, 70, 6, 5, scaleRGB(armor, 0.8f), 0);
     /* head */
-    sLimb(64, 30, 64, 38, 5, 5, skin, 0);
-    if (who) sQuad(51, 14, 77, 14, 80, 40, 48, 40, hair, 1.f);                    /* Gabriel's long hair */
+    sLimb(64, 30, 64, 38, 4, 4, skin, 0);
     sBall(64, 22, 10, 12, skin, 0);
-    if (who) sQuad(53, 10, 75, 10, 75, 16, 53, 16, hair, 1.1f);
-    else { sBall(58, 11, 5, 4, hair, 0); sBall(64, 9, 6, 4, hair, 0); sBall(70, 11, 5, 4, hair, 0); }  /* Michael's dark curls */
-    sQuad(57, 21, 62, 21, 62, 23, 57, 23, EM(who ? 0xFFC0F0FF : 0xFFFFF0B0), 1.f); sQuad(66, 21, 71, 21, 71, 23, 66, 23, EM(who ? 0xFFC0F0FF : 0xFFFFF0B0), 1.f); sLimb(61, 28, 67, 28, 0.5f, 0.5f, 0xFF9A5A40, 0);
-    /* halo */
-    for (int k = 0; k < 24; k++) {
-        float a0 = k * 2.f * PI_F / 24.f, a1 = (k + 1) * 2.f * PI_F / 24.f;
-        sLimb(64 + cosf(a0) * 15, 4 + sinf(a0) * 3.5f, 64 + cosf(a1) * 15, 4 + sinf(a1) * 3.5f, 1.6f, 1.6f, EM(0xFFFFE070), 0);
-    }
+    if (who) { sQuad(53, 10, 75, 10, 76, 22, 52, 22, hair, 1.1f); }
+    else { sQuad(54, 10, 74, 10, 74, 16, 54, 16, hair, 1.1f); sQuad(56, 28, 72, 28, 69, 35, 59, 35, hair, 0.9f); }   /* Adam's beard */
+    sPix(60, 22, dark); sPix(68, 22, dark);
     sOutline(cur);
 }
 /* wall torch: iron bracket, wooden haft and a living flame */
@@ -749,6 +732,67 @@ static void torchFrame(int f)
     sTri(55, 66, 73, 66, 64 - sw * 0.6f, 36, EM(0xFFFF6A10), 1.f);
     sTri(58, 66, 70, 66, 64 + sw * 0.3f, 46, EM(0xFFFFC040), 1.f);
     sTri(61, 66, 67, 66, 64, 54, EM(0xFFFFF8C0), 1.f);
+}
+/* "behold a great red dragon, having seven heads and ten horns, and seven crowns upon his heads" (Revelation 12:3)
+   Note the crowns sit on its heads; the Beast of chapter 13 wears its crowns on its horns. */
+static void dragonFrame(int f)
+{
+    float ph = f < 4 ? f * PI_F / 2.f : 0.f, lo = f < 4 ? sinf(ph) * 4.f : 0.f, flap = f < 4 ? sinf(ph) * 6.f : -4.f;
+    uint32_t red = 0xFFA81810, wing = 0xFF6A0C08, belly = 0xFFD8783A, horn = 0xFFE0D8C0, gold = 0xFFF0C040, claw = 0xFF1A0A06;
+    /* vast wings */
+    for (int s = -1; s <= 1; s += 2) {
+        float Sx = 64 + s * 18, Sy = 58, Ex = 64 + s * 54, Ey = 14 + flap;
+        float F1x = 64 + s * 64, F1y = 52 + flap, F2x = 64 + s * 52, F2y = 82 + flap * 0.5f, F3x = 64 + s * 30, F3y = 92;
+        sTri(Sx, Sy, Ex, Ey, F1x, F1y, wing, s < 0 ? 1.15f : 0.9f);
+        sTri(Sx, Sy, F1x, F1y, F2x, F2y, wing, s < 0 ? 0.95f : 0.8f);
+        sTri(Sx, Sy, F2x, F2y, F3x, F3y, wing, s < 0 ? 1.05f : 0.85f);
+        sLimb(Sx, Sy, Ex, Ey, 2.5f, 1.5f, claw, 0);
+        sLimb(Ex, Ey, F1x, F1y, 1.2f, 0.8f, claw, 0); sLimb(Ex, Ey, F2x, F2y, 1.f, 0.8f, claw, 0); sLimb(Ex, Ey, F3x, F3y, 1.f, 0.8f, claw, 0);
+    }
+    /* "his tail drew the third part of the stars of heaven" */
+    sLimb(64, 104, 100, 118, 6, 4, red, 0); sLimb(100, 118, 116, 100, 4, 2, red, 0);
+    sTri(112, 96, 124, 96, 120, 84, claw, 1.f);
+    /* clawed legs */
+    for (int s = -1; s <= 1; s += 2) {
+        float l = s < 0 ? lo : -lo;
+        sQuad(64 + s * 14, 92, 64 + s * 30, 92, 64 + s * 28, 118 + l, 64 + s * 18, 118 + l, red, s < 0 ? 1.1f : 0.85f);
+        for (int k = 0; k < 3; k++) sTri(64 + s * (16 + k * 5), 118 + l, 64 + s * (19 + k * 5), 118 + l, 64 + s * (18 + k * 5), 126, claw, 1.f);
+    }
+    /* scaled body */
+    sQuad(36, 66, 92, 66, 84, 108, 44, 108, red, 1.f);
+    sTri(36, 66, 64, 54, 64, 108, red, 1.2f);
+    sQuad(52, 70, 76, 70, 72, 104, 56, 104, belly, 1.f);
+    for (int r = 0; r < 5; r++) sLimb(54, 74 + r * 7, 74, 74 + r * 7, 0.6f, 0.6f, scaleRGB(belly, 0.7f), 0);
+    /* seven heads on long necks, ten horns, seven crowns */
+    float hx[7], hy[7];
+    for (int h = 0; h < 7; h++) {
+        float ang = -PI_F / 2.f + (h - 3) * 0.33f;
+        float sway = f < 4 ? sinf(ph + h * 0.9f) * 3.f : 0.f, lunge = f == 4 ? 8.f : f == 5 ? 12.f : 0.f;
+        float bx = 64 + (h - 3) * 5.f, by = 60.f, len = 34.f + (h % 2) * 7.f;
+        hx[h] = bx + cosf(ang) * len + sway; hy[h] = by + sinf(ang) * len + lunge;
+        sLimb(bx, by, hx[h], hy[h], 5, 3.5f, red, 0);
+    }
+    int hornsLeft = 10;
+    for (int h = 0; h < 7; h++) {
+        float x = hx[h], y = hy[h];
+        /* horned, wedge-shaped serpent head */
+        int nh = h < 3 ? 2 : 1;
+        for (int k = 0; k < nh && hornsLeft > 0; k++, hornsLeft--) {
+            float side = nh == 2 ? (k ? 1.f : -1.f) : 0.3f;
+            sTri(x + side * 4 - 1.5f, y - 4, x + side * 4 + 1.5f, y - 4, x + side * 9, y - 14, horn, 1.f);
+        }
+        sQuad(x - 6, y - 4, x + 6, y - 4, x + 4, y + 7, x - 4, y + 7, red, 1.1f);
+        sTri(x - 4, y + 7, x + 4, y + 7, x, y + 11, red, 0.85f);
+        sTri(x - 5, y - 2, x - 1, y - 1, x - 4, y + 1, EM(0xFFFFE030), 1.f); sTri(x + 5, y - 2, x + 1, y - 1, x + 4, y + 1, EM(0xFFFFE030), 1.f);
+        /* a crown upon each head */
+        sQuad(x - 4, y - 7, x + 4, y - 7, x + 4, y - 5, x - 4, y - 5, gold, 1.f);
+        for (int k = -1; k <= 1; k++) sTri(x + k * 3 - 1.2f, y - 7, x + k * 3 + 1.2f, y - 7, x + k * 3, y - 10, gold, 1.f);
+        if (f == 4 || f == 5) {                                    /* breathing fire */
+            sTri(x - 3, y + 9, x + 3, y + 9, x + (f == 5 ? 0 : 2), y + 22, EM(0xFFFF7010), 1.f);
+            sTri(x - 1.5f, y + 9, x + 1.5f, y + 9, x, y + 16, EM(0xFFFFE070), 1.f);
+        }
+    }
+    sOutline(cur);
 }
 static void buildSprites(void)
 {
@@ -772,12 +816,14 @@ static void buildSprites(void)
     /* the Beast from the sea (Revelation 13:1-2) */
     for (int f = 0; f < 6; f++) { cur = spr[SP_BRUTE + f]; beastFrame(f); }
     buildDeathFrames(SP_BRUTE);
-    cur = spr[SP_P1]; angelFrame(0);
-    cur = spr[SP_P2]; angelFrame(1);
+    cur = spr[SP_P1]; humanFrame(0);
+    cur = spr[SP_P2]; humanFrame(1);
     sTransform(spr[SP_PDOWN], spr[SP_P1], -1.5f, 0.82f, 64, 125, 112, 124);
     cur = spr[SP_PU_AMMO]; powerFrame(0xFF60D060, "A");
     cur = spr[SP_PU_FIRE]; powerFrame(0xFFFF6030, "F");
     cur = spr[SP_PU_GOLD]; powerFrame(0xFFFFD030, "$");
+    for (int f = 0; f < 6; f++) { cur = spr[SP_DRAGON + f]; dragonFrame(f); }
+    buildDeathFrames(SP_DRAGON);
     cur = spr[SP_TORCH0]; torchFrame(0);
     cur = spr[SP_TORCH1]; torchFrame(1);
     for (int i = 0; i < SP_COUNT; i++) pixelArt(spr[i]);
@@ -1132,8 +1178,8 @@ typedef struct {
     int points, weap[3], lvl[3], mag[3], res[3], cur, slots, maxSlots, kills, vest, hands, revives, swingCount;
     char msg[48]; float msgT;
 } Player;
-enum { ZT_NORMAL, ZT_CRAWL, ZT_BLOAT, ZT_BRUTE };
-typedef struct { int on, dead, type, variant, swingId; float x, y, hp, maxHp, speed, atkCd, anim, deadT, groanT, atkAnim, stun; } Zombie;
+enum { ZT_NORMAL, ZT_CRAWL, ZT_BLOAT, ZT_BRUTE, ZT_DRAGON };
+typedef struct { int on, dead, type, variant, swingId; float x, y, hp, maxHp, speed, atkCd, anim, deadT, groanT, atkAnim, stun, breathT; } Zombie;
 typedef struct { int on, type; float x, y, t; } Power;
 typedef struct { int on; float x, y, z, vx, vy, vz, life, size; uint32_t col; } Particle;
 #define MAXZ 40
@@ -1147,12 +1193,71 @@ static int nPlayers = 1;
 static int wave, toSpawn, bossesToSpawn, waveState;
 static float waveTimer, spawnTimer, goldT, endT, waveBanner;
 static int bestWave[NMAPS], wonMap[NMAPS];
-enum { GS_TITLE, GS_OPTIONS, GS_PLAY, GS_OVER, GS_WIN };
+enum { GS_TITLE, GS_OPTIONS, GS_PLAY, GS_OVER, GS_WIN, GS_CHAPTERS, GS_STORY, GS_CHAPWIN };
 static int gameState = GS_TITLE, paused, menuSel, optSel;
 static float flowTimer;
 #define WIN_WAVE 99
 static void placeTorches(void);
 static int moveOk(float x, float y, int (*pass)(int, int), float r);
+/* ---- Campaign: seven chapters from scripture (quotations from the King James Version, public domain) ---- */
+#define NCHAP 7
+typedef struct {
+    const char *title, *ref, *quote[4], *goal, *win;
+    int map, waves, startWave, bossEvery, dragon;
+    float crawl, bloat;
+} Chapter;
+static const Chapter CHAP[NCHAP] = {
+    {"THE BOTTOMLESS PIT", "REVELATION 9:1-3",
+     {"AND THE FIFTH ANGEL SOUNDED, AND I SAW A STAR FALL FROM HEAVEN",
+      "UNTO THE EARTH: AND TO HIM WAS GIVEN THE KEY OF THE BOTTOMLESS PIT.",
+      "AND THERE CAME OUT OF THE SMOKE LOCUSTS UPON THE EARTH.", NULL},
+     "HOLD ROTWOOD FARM. SURVIVE 5 WAVES OF LOCUSTS.",
+     "THE LOCUSTS FALL BACK INTO THE SMOKE OF THE PIT.",
+     0, 5, 1, 0, 0, 0.f, 0.f},
+    {"UNCLEAN SPIRITS", "REVELATION 16:13-14",
+     {"AND I SAW THREE UNCLEAN SPIRITS LIKE FROGS COME OUT OF THE MOUTH",
+      "OF THE DRAGON... FOR THEY ARE THE SPIRITS OF DEVILS, WORKING MIRACLES.", NULL, NULL},
+     "HOLD MILLBROOK MILL. SURVIVE 6 WAVES. THE FROG SPIRITS COME EARLY.",
+     "THE UNCLEAN SPIRITS ARE SILENCED.",
+     2, 6, 4, 0, 0, 0.35f, 0.f},
+    {"THE WATCHMAN", "EZEKIEL 33:6",
+     {"BUT IF THE WATCHMAN SEE THE SWORD COME, AND BLOW NOT THE TRUMPET,",
+      "AND THE PEOPLE BE NOT WARNED... HIS BLOOD WILL I REQUIRE AT THE",
+      "WATCHMAN'S HAND.", NULL},
+     "KEEP WATCH AT GULLWATCH LIGHT. SURVIVE 7 WAVES.",
+     "THE LIGHT STILL BURNS. THE WATCH WAS KEPT.",
+     1, 7, 7, 0, 0, 0.10f, 0.05f},
+    {"WAR IN HEAVEN", "REVELATION 12:7-9",
+     {"AND THERE WAS WAR IN HEAVEN: MICHAEL AND HIS ANGELS FOUGHT AGAINST",
+      "THE DRAGON; AND THE DRAGON FOUGHT AND HIS ANGELS, AND PREVAILED NOT...",
+      "AND HIS ANGELS WERE CAST OUT WITH HIM.", NULL},
+     "CAST DOWN THE FALLEN ANGELS AT HOLLOW CHAPEL. SURVIVE 8 WAVES.",
+     "THE FALLEN ARE CAST OUT. THEIR PLACE IS FOUND NO MORE.",
+     3, 8, 10, 0, 0, 0.05f, 0.30f},
+    {"THE BEAST FROM THE SEA", "REVELATION 13:1",
+     {"AND I STOOD UPON THE SAND OF THE SEA, AND SAW A BEAST RISE UP OUT",
+      "OF THE SEA, HAVING SEVEN HEADS AND TEN HORNS, AND UPON HIS HORNS",
+      "TEN CROWNS.", NULL},
+     "HOLD IRONVALE DEPOT. SURVIVE 9 WAVES. A BEAST RISES EVERY THIRD WAVE.",
+     "THE BEASTS LIE SLAIN UPON THE TRACKS.",
+     4, 9, 13, 3, 0, 0.08f, 0.08f},
+    {"ARMAGEDDON", "REVELATION 16:16",
+     {"AND HE GATHERED THEM TOGETHER INTO A PLACE CALLED IN THE HEBREW",
+      "TONGUE ARMAGEDDON.", NULL, NULL},
+     "EVERY DEMON COMES AT ONCE. SURVIVE 10 WAVES AT ROTWOOD FARM.",
+     "THE HOST OF THE ABYSS IS BROKEN.",
+     0, 10, 17, 5, 0, 0.15f, 0.15f},
+    {"THE DRAGON BOUND", "REVELATION 12:3 AND 20:2",
+     {"BEHOLD A GREAT RED DRAGON, HAVING SEVEN HEADS AND TEN HORNS, AND",
+      "SEVEN CROWNS UPON HIS HEADS... AND HE LAID HOLD ON THE DRAGON, THAT",
+      "OLD SERPENT, WHICH IS THE DEVIL, AND SATAN, AND BOUND HIM A",
+      "THOUSAND YEARS."},
+     "SURVIVE 6 WAVES AT HOLLOW CHAPEL, THEN SLAY THE GREAT RED DRAGON.",
+     "THE DRAGON IS BOUND.",
+     3, 6, 22, 3, 1, 0.12f, 0.12f},
+};
+static int campaign, curChap, chapUnlocked = 1, chapSel, dragonPending;
+static int chapWave(void) { return campaign ? wave - (CHAP[curChap].startWave - 1) : wave; }
 static void addFlash(float x, float y, float r, float g, float b, float rad, float life);
 
 static void addPoints(Player *p, int n) { p->points += goldT > 0.f ? n * 2 : n; }
@@ -1219,14 +1324,29 @@ static void resetGame(int players, int m)
         placeAtStart(p, i);
         givePistol(p);
     }
-    wave = 0; waveState = 0; waveTimer = 4.f; goldT = 0; endT = 0; waveBanner = 0;
+    wave = 0; waveState = 0; waveTimer = 4.f; goldT = 0; endT = 0; waveBanner = 0; dragonPending = 0;
     trapOn = 0; trapT = 0; trapCd = 0;
     musicMode = 0;
     computeFlow();
 }
 
 /* difficulty ramps every wave up to 99 */
-static int waveCount(int w) { int n = 6 + 3 * w + w * w / 8; if (n > 140) n = 140; return nPlayers == 2 ? n * 7 / 5 : n; }
+/* begin a campaign chapter: its map, its starting difficulty and a purse to match */
+static void startChapter(int c, int players)
+{
+    campaign = 1; curChap = c;
+    resetGame(players, CHAP[c].map);
+    wave = CHAP[c].startWave - 1;
+    for (int i = 0; i < 2; i++) pl[i].points += 450 * (CHAP[c].startWave - 1);
+}
+/* demons per wave follow the Fibonacci sequence: 1, 1, 2, 3, 5, 8, 13, 21 ... (campaign chapters start at the 4th term) */
+static int fibN(int n)
+{
+    long long a = 0, b = 1;
+    for (int i = 0; i < n; i++) { long long t = a + b; a = b; b = t; if (a > 2000000000LL) return 2000000000; }
+    return (int)a;
+}
+static int waveCount(int w) { return fibN(campaign ? w - (CHAP[curChap].startWave - 1) + 3 : w); }
 static float waveHp(int w) { float k = (float)(w - 1); return 100.f + 45.f * k + 0.6f * k * k; }
 static int maxAlive(void) { int a = (nPlayers == 2 ? 24 : 18) + (wave / 4 < 8 ? wave / 4 : 8); return a > MAXZ ? MAXZ : a; }
 static float zDamage(void) { return clampf(34.f + wave * 0.45f, 34.f, 80.f); }
@@ -1235,7 +1355,12 @@ static void startWave(void)
 {
     wave++;
     toSpawn = waveCount(wave);
-    bossesToSpawn = (wave % 5 == 0) ? 1 + wave / 30 + (nPlayers == 2 && wave >= 20 ? 1 : 0) : 0;
+    if (campaign) {
+        const Chapter *C = &CHAP[curChap];
+        int cw = chapWave();
+        bossesToSpawn = (C->bossEvery && cw % C->bossEvery == 0) ? 1 + (nPlayers == 2 && cw >= 6 ? 1 : 0) : 0;
+        if (C->dragon && cw >= C->waves) { dragonPending = 1; bossesToSpawn = 0; }
+    } else bossesToSpawn = (wave % 5 == 0) ? 1 + wave / 30 + (nPlayers == 2 && wave >= 20 ? 1 : 0) : 0;
     waveState = 1; spawnTimer = 1.5f; waveBanner = 3.5f;
     musicMode = 1;
     for (int i = 0; i < 2; i++)
@@ -1246,9 +1371,10 @@ static void startWave(void)
             say(p, "YOU'RE BACK");
         }
     sndRoundStart();
-    if (bossesToSpawn) sayAll("THE BEAST RISES FROM THE SEA");
+    if (dragonPending) sayAll("THE GREAT RED DRAGON COMES");
+    else if (bossesToSpawn) sayAll("THE BEAST RISES FROM THE SEA");
 }
-static void spawnZombie(int boss)
+static void spawnZombie(int boss)          /* boss: 0 demon, 1 Beast, 2 Dragon */
 {
     int cand[24][2], n = 0;
     for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) if (map[y][x] == 'Z' && zActive(x, y) && n < 24) { cand[n][0] = x; cand[n][1] = y; n++; }
@@ -1262,8 +1388,10 @@ static void spawnZombie(int boss)
         float hp = waveHp(wave);
         float crawl = wave >= 6 ? clampf(0.04f + (wave - 6) * 0.01f, 0.f, 0.2f) : 0.f;
         float bloat = wave >= 8 ? clampf(0.03f + (wave - 8) * 0.005f, 0.f, 0.12f) : 0.f;
+        if (campaign) { crawl = fmaxf(crawl, CHAP[curChap].crawl); bloat = fmaxf(bloat, CHAP[curChap].bloat); }
         float r = frand();
-        if (boss) { z->type = ZT_BRUTE; z->hp = 1500.f + 300.f * wave; z->speed = 1.15f + wave * 0.004f; }
+        if (boss == 2) { z->type = ZT_DRAGON; z->hp = nPlayers == 2 ? 36000.f : 24000.f; z->speed = 1.05f; z->atkCd = 3.f; }
+        else if (boss) { z->type = ZT_BRUTE; z->hp = 1500.f + 300.f * wave; z->speed = 1.15f + wave * 0.004f; }
         else if (r < crawl) { z->type = ZT_CRAWL; z->hp = hp * 0.6f; z->speed = 1.5f + frand() * 0.4f; }
         else if (r < crawl + bloat) { z->type = ZT_BLOAT; z->hp = hp * 2.2f; z->speed = 0.75f; }
         else {
@@ -1273,7 +1401,8 @@ static void spawnZombie(int boss)
         }
         z->maxHp = z->hp;
         z->groanT = 1.f + frand() * 4.f;
-        if (boss) { bossesToSpawn--; playV(V_GROAN, 2.f, 40.f, 0, 0.7f, 0, 0); }
+        if (boss == 2) { dragonPending = 0; playV(V_GROAN, 3.f, 28.f, 0, 0.9f, 0, 0); playV(V_NOISE, 2.f, 0, 0, 0.6f, 0.03f, 0); }
+        else if (boss) { bossesToSpawn--; playV(V_GROAN, 2.f, 40.f, 0, 0.7f, 0, 0); }
         else toSpawn--;
         return;
     }
@@ -1322,13 +1451,18 @@ static void killZombie(Zombie *z, Player *by)
 {
     if (z->dead) return;
     z->dead = 1; z->deadT = 2.0f;
-    int pts = z->type == ZT_BRUTE ? 500 : z->type == ZT_BLOAT ? 80 : 60;
+    int pts = z->type == ZT_DRAGON ? 2000 : z->type == ZT_BRUTE ? 500 : z->type == ZT_BLOAT ? 80 : 60;
     if (by) { addPoints(by, pts); by->kills++; by->killT = 0.25f; }
-    playV(V_GROAN, 0.5f, z->type == ZT_BRUTE ? 35.f : 55.f, 0, 0.35f, 0, 0);
+    playV(V_GROAN, 0.5f, z->type >= ZT_BRUTE ? 30.f : 55.f, 0, 0.35f, 0, 0);
     spawnParts(z->x, z->y, 0.6f, 10, 0xFF7A1010, 1.5f, 0.07f);
     spawnParts(z->x, z->y, 0.5f, 14, EM(0xFFFF8A20), 2.0f, 0.035f);       /* bursts into embers */
     addFlash(z->x, z->y, 0.9f, 0.4f, 0.12f, 2.6f, 0.45f);
     if (z->type == ZT_BRUTE) { dropPower(z->x, z->y); sayAll("THE BEAST IS SLAIN! +500"); }
+    if (z->type == ZT_DRAGON) {
+        dropPower(z->x, z->y); sayAll("THE DRAGON IS BOUND! +2000");
+        spawnParts(z->x, z->y, 0.8f, 60, EM(0xFFFF6010), 3.5f, 0.06f); addFlash(z->x, z->y, 2.5f, 1.2f, 0.4f, 8.f, 1.5f);
+        playV(V_NOISE, 2.5f, 0, 0, 0.9f, 0.05f, 0);
+    }
     else if (frand() < 0.03f) dropPower(z->x, z->y);
     if (z->type == ZT_BLOAT) { z->on = 0; explode(z->x, z->y); }
 }
@@ -1390,7 +1524,7 @@ static void fire(Player *p)
                 float t = rx * dx + ry * dy;
                 if (t <= minT || t >= bestT) continue;
                 float px = rx - dx * t, py = ry - dy * t;
-                float rad = (z->type == ZT_BRUTE ? 0.45f : z->type == ZT_BLOAT ? 0.42f : 0.33f) + (W->melee ? 0.15f : 0.f);
+                float rad = (z->type == ZT_DRAGON ? 0.65f : z->type == ZT_BRUTE ? 0.45f : z->type == ZT_BLOAT ? 0.42f : 0.33f) + (W->melee ? 0.15f : 0.f);
                 if (px * px + py * py < rad * rad) { bestT = t; hit = z; }
             }
             if (!hit) {
@@ -1407,13 +1541,13 @@ static void fire(Player *p)
             }
             float dmg = dmgBase * (bestT > 8.f ? 0.7f : 1.f);
             hit->hp -= dmg;
-            hit->stun = hit->type == ZT_BRUTE ? 0.f : (W->melee ? 0.3f : 0.12f);
+            hit->stun = hit->type >= ZT_BRUTE ? 0.f : (W->melee ? 0.3f : 0.12f);
             addPoints(p, 10);
             p->hitT = 0.12f;
             struck = 1;
             spawnParts(hit->x - dx * 0.2f, hit->y - dy * 0.2f, hit->type == ZT_CRAWL ? 0.2f : 0.65f, W->melee ? 8 : 4, 0xFF8A1414, 1.2f, 0.05f);
             if (hit->hp <= 0.f) killZombie(hit, p);
-            else if (hit->type != ZT_BRUTE) { float kb = W->melee ? 0.35f : 0.05f; if (moveOk(hit->x + dx * kb, hit->y + dy * kb, zombiePass, 0.2f)) { hit->x += dx * kb; hit->y += dy * kb; } }
+            else if (hit->type < ZT_BRUTE) { float kb = W->melee ? 0.35f : 0.05f; if (moveOk(hit->x + dx * kb, hit->y + dy * kb, zombiePass, 0.2f)) { hit->x += dx * kb; hit->y += dy * kb; } }
             minT = bestT + 0.01f;
         }
         /* show the stone, arrow or javelin in flight */
@@ -1692,7 +1826,7 @@ static void updatePlayer(int i, float dt)
             playV(V_TONE, 0.15f, 520, 1040, 0.35f, 0, 0); playV(V_TONE, 0.25f, 780, 1560, 0.3f, 0, 0.12f);
             if (u->type == 0) { for (int j = 0; j < 2; j++) for (int q = 0; q < pl[j].slots; q++) pl[j].res[q] = wRes(&pl[j], q); sayAll("AMMO CRATE!"); }
             if (u->type == 1) {
-                for (int z = 0; z < MAXZ; z++) if (zs[z].on && !zs[z].dead && zs[z].type != ZT_BRUTE) killZombie(&zs[z], NULL);
+                for (int z = 0; z < MAXZ; z++) if (zs[z].on && !zs[z].dead && zs[z].type < ZT_BRUTE) killZombie(&zs[z], NULL);
                 for (int j = 0; j < 2; j++) if (pl[j].on) addPoints(&pl[j], 400);
                 sayAll("FIRESTORM!");
                 playV(V_NOISE, 1.5f, 0, 0, 0.8f, 0.1f, 0);
@@ -1726,16 +1860,39 @@ static void updateZombies(float dt)
         if (z->groanT <= 0) {
             z->groanT = 3.f + frand() * 4.f;
             float vol = tgt ? clampf(0.5f - sqrtf(td) * 0.035f, 0.04f, 0.5f) : 0.08f;
-            playV(V_GROAN, 0.9f + frand() * 0.6f, (z->type == ZT_BRUTE ? 38.f : z->type == ZT_NORMAL ? 120.f : 60.f) + frand() * 50.f, 0, vol, 0, 0);
+            playV(V_GROAN, 0.9f + frand() * 0.6f, (z->type >= ZT_BRUTE ? 34.f : z->type == ZT_NORMAL ? 120.f : 60.f) + frand() * 50.f, 0, vol, 0, 0);
         }
         if (!tgt) continue;
         td = sqrtf(td);
         if (z->atkCd > 0) z->atkCd -= dt;
-        float reachD = z->type == ZT_BRUTE ? 1.0f : 0.75f;
+        if (z->type == ZT_DRAGON) {                     /* breathes fire down a line every few seconds */
+            z->breathT -= dt;
+            if (z->breathT <= 0 && td < 7.f) {
+                float fx = (tgt->x - z->x) / td, fy = (tgt->y - z->y) / td;
+                z->breathT = 5.f; z->atkAnim = 0.6f;
+                for (int k = 0; k < 26; k++) {
+                    float d = 0.6f + k * 0.26f;
+                    if (castDist(z->x, z->y, fx, fy) < d) break;
+                    spawnParts(z->x + fx * d, z->y + fy * d, 0.6f, 2, EM(k & 1 ? 0xFFFF6010 : 0xFFFFC040), 0.8f, 0.09f);
+                }
+                addFlash(z->x + fx * 2.f, z->y + fy * 2.f, 1.6f, 0.7f, 0.2f, 5.f, 0.8f);
+                playV(V_NOISE, 1.0f, 0, 0, 0.7f, 0.08f, 0);
+                for (int k = 0; k < 2; k++) {
+                    Player *q = &pl[k];
+                    if (!q->on || q->state != ST_UP) continue;
+                    float qx = q->x - z->x, qy = q->y - z->y, qd = sqrtf(qx * qx + qy * qy);
+                    if (qd < 7.5f && qd > 0.01f && (qx * fx + qy * fy) / qd > 0.85f && castDist(z->x, z->y, qx / qd, qy / qd) >= qd) {
+                        q->hp -= 35.f; q->regenDelay = 3.f; q->hurtFlash = 0.5f; q->shake = 0.6f;
+                        if (q->hp <= 0) downPlayer(q);
+                    }
+                }
+            }
+        }
+        float reachD = z->type == ZT_DRAGON ? 1.4f : z->type == ZT_BRUTE ? 1.0f : 0.75f;
         if (td < reachD) {
             if (z->atkCd <= 0) {
-                z->atkCd = z->type == ZT_BRUTE ? 1.6f : 1.3f; z->atkAnim = 0.35f;
-                float dmg = z->type == ZT_BRUTE ? zDamage() * 1.8f : z->type == ZT_CRAWL ? zDamage() * 0.6f : zDamage();
+                z->atkCd = z->type >= ZT_BRUTE ? 1.6f : 1.3f; z->atkAnim = 0.35f;
+                float dmg = z->type == ZT_DRAGON ? 70.f : z->type == ZT_BRUTE ? zDamage() * 1.8f : z->type == ZT_CRAWL ? zDamage() * 0.6f : zDamage();
                 tgt->hp -= dmg; tgt->regenDelay = 3.f; tgt->hurtFlash = 0.3f; tgt->shake = 0.4f;
                 playV(V_NOISE, 0.15f, 0, 0, 0.5f, 0.08f, 0);
                 if (tgt->hp <= 0) downPlayer(tgt);
@@ -1754,7 +1911,7 @@ static void updateZombies(float dt)
                 if (flow[ny][nx] < best) { best = flow[ny][nx]; bx = nx; by = ny; }
             }
             if (cellC(bx, by) == 'B' && boards[by][bx] > 0) {
-                if (z->type == ZT_BRUTE) { boards[by][bx] = 0; playV(V_NOISE, 0.6f, 0, 0, 0.6f, 0.1f, 0); continue; }
+                if (z->type >= ZT_BRUTE) { boards[by][bx] = 0; playV(V_NOISE, 0.6f, 0, 0, 0.6f, 0.1f, 0); continue; }
                 tearT[by][bx] += dt;
                 z->atkAnim = 0.2f;
                 if (tearT[by][bx] > 1.1f) { tearT[by][bx] = 0; boards[by][bx]--; playV(V_NOISE, 0.25f, 0, 0, 0.35f, 0.1f, 0); }
@@ -1773,7 +1930,7 @@ static void updateZombies(float dt)
             Zombie *a = &zs[i], *b = &zs[j];
             if (!a->on || !b->on || a->dead || b->dead) continue;
             float dx = b->x - a->x, dy = b->y - a->y, d2 = dx * dx + dy * dy;
-            float minD = (a->type == ZT_BRUTE || b->type == ZT_BRUTE) ? 0.7f : 0.45f;
+            float minD = (a->type == ZT_DRAGON || b->type == ZT_DRAGON) ? 1.0f : (a->type == ZT_BRUTE || b->type == ZT_BRUTE) ? 0.7f : 0.45f;
             if (d2 < minD * minD && d2 > 1e-6f) {
                 float d = sqrtf(d2), push = (minD - d) * 0.5f;
                 dx /= d; dy /= d;
@@ -1804,22 +1961,26 @@ static void updateGame(float dt)
         if (waveTimer <= 0) startWave();
     } else {
         spawnTimer -= dt;
-        if ((toSpawn > 0 || bossesToSpawn > 0) && spawnTimer <= 0 && liveZombies() < maxAlive()) {
-            int boss = bossesToSpawn > 0 && (toSpawn < waveCount(wave) * 2 / 3 || toSpawn == 0);
-            spawnZombie(boss);
-            spawnTimer = clampf(2.0f - wave * 0.03f, 0.25f, 2.f);
+        if ((toSpawn > 0 || bossesToSpawn > 0 || dragonPending) && spawnTimer <= 0 && liveZombies() < maxAlive()) {
+            int boss = dragonPending && toSpawn < waveCount(wave) * 2 / 3 ? 2 :
+                       bossesToSpawn > 0 && (toSpawn < waveCount(wave) * 2 / 3 || toSpawn == 0) ? 1 : 0;
+            if (boss || toSpawn > 0) spawnZombie(boss);
+            spawnTimer = clampf(fminf(2.0f - wave * 0.03f, 90.f / (float)waveCount(wave)), 0.04f, 2.f);   /* big waves pour in faster */
         }
-        if (toSpawn <= 0 && bossesToSpawn <= 0 && liveZombies() == 0) {
+        if (toSpawn <= 0 && bossesToSpawn <= 0 && !dragonPending && liveZombies() == 0) {
             waveState = 0; waveTimer = 9.f; musicMode = 0;
             sndRoundEnd();
-            if (wave >= WIN_WAVE) { gameState = GS_WIN; endT = 0; wonMap[curMap] = 1; if (wave > bestWave[curMap]) bestWave[curMap] = wave; }
+            if (campaign && chapWave() >= CHAP[curChap].waves) {
+                gameState = GS_CHAPWIN; endT = 0;
+                if (chapUnlocked < curChap + 2) chapUnlocked = curChap + 2 > NCHAP ? NCHAP + 1 : curChap + 2;
+            } else if (!campaign && wave >= WIN_WAVE) { gameState = GS_WIN; endT = 0; wonMap[curMap] = 1; if (wave > bestWave[curMap]) bestWave[curMap] = wave; }
         }
     }
     int up = 0;
     for (int i = 0; i < 2; i++) if (pl[i].on && pl[i].state == ST_UP) up++;
     if (!up && gameState == GS_PLAY) {
         gameState = GS_OVER; endT = 0;
-        if (wave > bestWave[curMap]) bestWave[curMap] = wave;
+        if (!campaign && wave > bestWave[curMap]) bestWave[curMap] = wave;
     }
 }
 
@@ -2052,9 +2213,9 @@ static void drawWeapon(Player *p, int vx, int vy, int vw, int vh)
     gPx = -gAy / gL; gPy = gAx / gL;
     if (gPy > 0) { gPx = -gPx; gPy = -gPy; }                          /* +perp points up = lit side */
     uint32_t bronze = 0xFFB08040, steel = 0xFFC4C8D0, leather = 0xFF5A3418, bone = 0xFFE0D6BC, wood = 0xFF8A5A30;
-    uint32_t skin = p == &pl[1] ? 0xFFB8C2D0 : 0xFFD8A838;                          /* archangel gauntlet */
-    uint32_t sleeve = p == &pl[1] ? 0xFF2850B0 : 0xFFA82020;                        /* cloak sleeve */
-    uint32_t glow = p == &pl[1] ? EM(0xFF30D8FF) : EM(0xFFFF8A20);
+    uint32_t skin = p == &pl[1] ? 0xFFE6B696 : 0xFFC08458;                          /* Eve / Adam hand */
+    uint32_t sleeve = scaleRGB(skin, 0.88f);                                         /* bare forearm */
+    uint32_t glow = scaleRGB(skin, 0.8f);
     if (p->lvl[p->cur]) {                                                           /* blessed upgrades shine */
         int l = p->lvl[p->cur];
         bronze = mixC(bronze, 0xFFFFE890, 50 * l); steel = mixC(steel, 0xFFE0F0FF, 50 * l); bone = mixC(bone, 0xFFFFF8E0, 50 * l);
@@ -2266,11 +2427,11 @@ static void renderView(int pi, int vx, int vy, int vw, int vh)
         } else if (z->type == ZT_BLOAT) {
             b->sp = SP_BLOAT + (z->atkAnim > 0 ? 2 : (walkF & 1)); b->scale = 1.05f;
         } else {
-            int base = z->type == ZT_BRUTE ? SP_BRUTE : SP_Z + z->variant * 9;
+            int base = z->type == ZT_DRAGON ? SP_DRAGON : z->type == ZT_BRUTE ? SP_BRUTE : SP_Z + z->variant * 9;
             if (z->dead) { float t = 2.0f - z->deadT; b->sp = base + (t < 0.15f ? 6 : t < 0.35f ? 7 : 8); }
             else if (z->atkAnim > 0) b->sp = base + (z->atkAnim > 0.17f ? 4 : 5);
             else b->sp = base + walkF;
-            b->scale = z->type == ZT_BRUTE ? 1.45f : 0.97f;
+            b->scale = z->type == ZT_DRAGON ? 2.1f : z->type == ZT_BRUTE ? 1.45f : 0.97f;
             if (z->type == ZT_NORMAL && z->speed > 1.8f) b->tint = 0xFFC04030;
         }
         if (z->stun > 0) b->tint = 0xFFFFFFFF;
@@ -2338,7 +2499,7 @@ static void renderView(int pi, int vx, int vy, int vw, int vh)
     uint32_t pc = pi == 0 ? 0xFFFFA050 : 0xFF60D0FF;
     sprintf(buf, "$%d", p->points);
     drawText(vx + 10, vy + vh - 10 - 7 * big, big, goldT > 0 ? 0xFFFFE040 : pc, buf);
-    sprintf(buf, "WAVE %d", wave);
+    if (campaign) sprintf(buf, "WAVE %d/%d", chapWave(), CHAP[curChap].waves); else sprintf(buf, "WAVE %d", wave);
     drawText(vx + 10, vy + 8, big, 0xFFD02020, buf);
     if (waveState == 1) {
         sprintf(buf, "DEMONS %d", toSpawn + bossesToSpawn + liveZombies());
@@ -2381,9 +2542,10 @@ static void renderView(int pi, int vx, int vy, int vw, int vh)
     }
     if (p->msgT > 0) drawTextC(vx + vw / 2, vy + 46, 2, 0xFFFFE070, p->msg);
     if (waveBanner > 0) {
-        sprintf(buf, "WAVE %d", wave);
+        if (campaign) sprintf(buf, "WAVE %d OF %d", chapWave(), CHAP[curChap].waves); else sprintf(buf, "WAVE %d", wave);
         drawTextC(vx + vw / 2, vy + vh / 3 - 10, big + 1, 0xFFD02020, buf);
-        if (wave % 5 == 0) drawTextC(vx + vw / 2, vy + vh / 3 + 20, 2, 0xFFFF8040, "BOSS WAVE");
+        if (dragonPending) drawTextC(vx + vw / 2, vy + vh / 3 + 20, 2, 0xFFFF4020, "THE DRAGON COMES");
+        else if (bossesToSpawn) drawTextC(vx + vw / 2, vy + vh / 3 + 20, 2, 0xFFFF8040, "BOSS WAVE");
     }
     if (waveState == 0 && wave > 0 && waveTimer > 6.f) drawTextC(vx + vw / 2, vy + vh / 3, big, 0xFFF0F0F0, "WAVE SURVIVED");
     if (goldT > 0) drawTextC(vx + vw / 2, vy + 28, 2, 0xFFFFE040, "DOUBLE PAY");
@@ -2432,27 +2594,82 @@ static void titleBackdrop(float t)
 static void renderTitle(float t)
 {
     titleBackdrop(t);
-    blendRect(150, 100, 340, 150, 0xFF000000, 150);
+    blendRect(150, 92, 340, 172, 0xFF000000, 150);
     char buf[64];
-    const char *items[5];
+    const char *items[6];
     char pl_[24], mp[40];
     sprintf(pl_, "PLAYERS  < %d >", menuPlayers);
-    sprintf(mp, "MAP  < %s >", MAPS[curMap].name);
-    items[0] = "START"; items[1] = pl_; items[2] = mp; items[3] = "OPTIONS"; items[4] = "QUIT";
-    for (int i = 0; i < 5; i++) {
+    sprintf(mp, "ENDLESS MAP  < %s >", MAPS[curMap].name);
+    items[0] = "CAMPAIGN"; items[1] = "ENDLESS"; items[2] = pl_; items[3] = mp; items[4] = "OPTIONS"; items[5] = "QUIT";
+    for (int i = 0; i < 6; i++) {
         uint32_t c = i == menuSel ? 0xFFFFE070 : 0xFFD8D8D8;
-        drawTextC(FBW / 2, 110 + i * 24, 2, c, items[i]);
-        if (i == menuSel) { drawText(166, 110 + i * 24, 2, 0xFFFFE070, ">"); }
+        drawTextC(FBW / 2, 100 + i * 22, 2, c, items[i]);
+        if (i == menuSel) { drawText(162, 100 + i * 22, 2, 0xFFFFE070, ">"); }
     }
-    drawTextC(FBW / 2, 232, 1, 0xFFB0B0B0, MAPS[curMap].blurb);
-    if (wonMap[curMap]) sprintf(buf, "BEST: WAVE %d  -  SURVIVED TO DAWN!", bestWave[curMap]);
-    else if (bestWave[curMap]) sprintf(buf, "BEST ON THIS MAP: WAVE %d", bestWave[curMap]);
-    else strcpy(buf, "NOT PLAYED YET");
-    drawTextC(FBW / 2, 268, 1, 0xFFFFE070, buf);
+    if (menuSel == 0) {
+        sprintf(buf, "SEVEN CHAPTERS FROM SCRIPTURE  -  %d OF 7 UNLOCKED", chapUnlocked > NCHAP ? NCHAP : chapUnlocked);
+        drawTextC(FBW / 2, 236, 1, 0xFFB0B0B0, buf);
+        drawTextC(FBW / 2, 250, 1, 0xFFFFE070, chapUnlocked > NCHAP ? "THE DRAGON IS BOUND. THE CAMPAIGN IS COMPLETE." : "FROM THE BOTTOMLESS PIT TO THE DRAGON BOUND");
+    } else {
+        drawTextC(FBW / 2, 236, 1, 0xFFB0B0B0, MAPS[curMap].blurb);
+        if (wonMap[curMap]) sprintf(buf, "BEST: WAVE %d  -  SURVIVED TO DAWN!", bestWave[curMap]);
+        else if (bestWave[curMap]) sprintf(buf, "BEST ON THIS MAP: WAVE %d", bestWave[curMap]);
+        else strcpy(buf, "NOT PLAYED YET");
+        drawTextC(FBW / 2, 250, 1, 0xFFFFE070, buf);
+    }
+    drawTextC(FBW / 2, 268, 1, 0xFF909090, "DEMONS PER WAVE FOLLOW THE FIBONACCI SEQUENCE");
     drawTextC(FBW / 2, 300, 1, 0xFFC8C8C8, "P1  WASD MOVE/TURN  Q E STRAFE  SPACE FIRE  F USE  R RELOAD  C SWAP");
     drawTextC(FBW / 2, 312, 1, 0xFFC8C8C8, "P2  ARROWS  , . STRAFE  ENTER FIRE  RSHIFT USE  / RELOAD  ' SWAP");
     drawTextC(FBW / 2, 324, 1, 0xFFC8C8C8, "GAMEPADS: STICKS  A FIRE  B USE  X RELOAD  Y SWAP  START PAUSE");
     drawTextC(FBW / 2, 340, 1, 0xFF909090, "MENU: UP/DOWN CHOOSE  LEFT/RIGHT CHANGE  ENTER OR SPACE SELECT");
+}
+static void renderChapters(float t)
+{
+    titleBackdrop(t);
+    blendRect(70, 84, 500, 220, 0xFF000000, 175);
+    drawTextC(FBW / 2, 90, 3, 0xFFF0F0F0, "CAMPAIGN");
+    for (int i = 0; i < NCHAP; i++) {
+        char buf[80];
+        int open = i < chapUnlocked, done = i < chapUnlocked - 1;
+        sprintf(buf, "%d. %s", i + 1, open ? CHAP[i].title : "LOCKED");
+        uint32_t c = i == chapSel ? 0xFFFFE070 : open ? 0xFFD8D8D8 : 0xFF707070;
+        drawText(110, 126 + i * 22, 2, c, buf);
+        if (open) drawText(430, 130 + i * 22, 1, done ? 0xFF80E080 : 0xFFB0B0B0, done ? "COMPLETE" : CHAP[i].ref);
+        if (i == chapSel) drawText(90, 126 + i * 22, 2, 0xFFFFE070, ">");
+    }
+    drawTextC(FBW / 2, 290, 1, 0xFF909090, "ENTER PLAY    ESC BACK");
+}
+/* the scripture card shown before each chapter */
+static void renderStory(float t, int c)
+{
+    for (int y = 0; y < FBH; y++)
+        for (int x = 0; x < FBW; x++) {
+            uint32_t col = mixC(0xFF2A1C10, 0xFF4A3420, (int)(128 + 60 * sinf(x * 0.02f + y * 0.03f)));
+            if (hash2(x / 2, y / 2, 3) % 13 == 0) col = shadeC(col, 200);
+            fb[y * FBW + x] = col;
+        }
+    blendRect(40, 30, 560, 300, 0xFF000000, 90);
+    char buf[64];
+    if (c >= NCHAP) {   /* the end of the campaign */
+        drawTextC(FBW / 2, 60, 4, 0xFFFFE070, "IT IS DONE");
+        drawTextC(FBW / 2, 120, 1, 0xFFE8DCC0, "AND GOD SHALL WIPE AWAY ALL TEARS FROM THEIR EYES; AND THERE SHALL BE");
+        drawTextC(FBW / 2, 134, 1, 0xFFE8DCC0, "NO MORE DEATH, NEITHER SORROW, NOR CRYING, NEITHER SHALL THERE BE ANY");
+        drawTextC(FBW / 2, 148, 1, 0xFFE8DCC0, "MORE PAIN: FOR THE FORMER THINGS ARE PASSED AWAY.");
+        drawTextC(FBW / 2, 170, 1, 0xFFC0A060, "REVELATION 21:4");
+        drawTextC(FBW / 2, 220, 2, 0xFFF0F0F0, "MICHAEL AND GABRIEL STAND VICTORIOUS.");
+        if (((int)(t * 2)) & 1) drawTextC(FBW / 2, 290, 2, 0xFFFFE070, "PRESS ENTER");
+        return;
+    }
+    const Chapter *C = &CHAP[c];
+    sprintf(buf, "CHAPTER %d", c + 1);
+    drawTextC(FBW / 2, 44, 2, 0xFFC0A060, buf);
+    drawTextC(FBW / 2, 66, 3, 0xFFFFE070, C->title);
+    for (int i = 0; i < 4 && C->quote[i]; i++) drawTextC(FBW / 2, 116 + i * 14, 1, 0xFFE8DCC0, C->quote[i]);
+    drawTextC(FBW / 2, 180, 1, 0xFFC0A060, C->ref);
+    drawTextC(FBW / 2, 220, 1, 0xFFF0F0F0, C->goal);
+    sprintf(buf, "MAP: %s", MAPS[C->map].name);
+    drawTextC(FBW / 2, 238, 1, 0xFFB0B0B0, buf);
+    if (((int)(t * 2)) & 1) drawTextC(FBW / 2, 290, 2, 0xFFFFE070, "PRESS ENTER TO BEGIN");
 }
 static void renderOptions(float t)
 {
@@ -2486,6 +2703,7 @@ static void loadSave(void)
         int a, b, c, d, e;
         if (fscanf(f, "%d %d %d %d %d", &a, &b, &c, &d, &e) == 5) { optMaster = clampi(a, 0, 10); optMusic = clampi(b, 0, 10); optTurn = clampi(c, 1, 10); optSplit = d & 1; optFull = e & 1; }
         if (fscanf(f, "%d", &a) == 1) optAim = clampi(a, 0, 2);
+        if (fscanf(f, "%d", &a) == 1) chapUnlocked = clampi(a, 1, NCHAP + 1);
         fclose(f);
     }
 }
@@ -2496,7 +2714,7 @@ static void writeSave(void)
     FILE *f = saveDir[0] ? fopen(path, "w") : NULL;
     if (!f) return;
     for (int m = 0; m < NMAPS; m++) fprintf(f, "%d %d\n", bestWave[m], wonMap[m]);
-    fprintf(f, "%d %d %d %d %d\n%d\n", optMaster, optMusic, optTurn, optSplit, optFull, optAim);
+    fprintf(f, "%d %d %d %d %d\n%d\n%d\n", optMaster, optMusic, optTurn, optSplit, optFull, optAim, chapUnlocked);
     fclose(f);
 }
 
@@ -2518,22 +2736,39 @@ enum { NAV_NONE, NAV_UP, NAV_DOWN, NAV_LEFT, NAV_RIGHT, NAV_OK, NAV_BACK };
 static int menuInput(int nav, SDL_Window *win, int *running)
 {
     if (gameState == GS_TITLE) {
-        if (nav == NAV_UP) menuSel = (menuSel + 4) % 5;
-        if (nav == NAV_DOWN) menuSel = (menuSel + 1) % 5;
+        if (nav == NAV_UP) menuSel = (menuSel + 5) % 6;
+        if (nav == NAV_DOWN) menuSel = (menuSel + 1) % 6;
         if (nav == NAV_LEFT || nav == NAV_RIGHT) {
             int d = nav == NAV_RIGHT ? 1 : -1;
-            if (menuSel == 1) menuPlayers = menuPlayers == 1 ? 2 : 1;
-            if (menuSel == 2) curMap = (curMap + NMAPS + d) % NMAPS;
+            if (menuSel == 2) menuPlayers = menuPlayers == 1 ? 2 : 1;
+            if (menuSel == 3) curMap = (curMap + NMAPS + d) % NMAPS;
         }
         if (nav == NAV_OK) {
-            if (menuSel == 0) { resetGame(menuPlayers, curMap); gameState = GS_PLAY; paused = 0; }
-            if (menuSel == 1) menuPlayers = menuPlayers == 1 ? 2 : 1;
-            if (menuSel == 2) curMap = (curMap + 1) % NMAPS;
-            if (menuSel == 3) { gameState = GS_OPTIONS; optSel = 0; }
-            if (menuSel == 4) *running = 0;
+            if (menuSel == 0) { gameState = GS_CHAPTERS; chapSel = clampi(chapUnlocked - 1, 0, NCHAP - 1); }
+            if (menuSel == 1) { campaign = 0; resetGame(menuPlayers, curMap); gameState = GS_PLAY; paused = 0; }
+            if (menuSel == 2) menuPlayers = menuPlayers == 1 ? 2 : 1;
+            if (menuSel == 3) curMap = (curMap + 1) % NMAPS;
+            if (menuSel == 4) { gameState = GS_OPTIONS; optSel = 0; }
+            if (menuSel == 5) *running = 0;
         }
         if (nav == NAV_BACK) *running = 0;
         if (nav) playV(V_TONE, 0.04f, 900, 900, 0.15f, 0, 0);
+        return 1;
+    }
+    if (gameState == GS_CHAPTERS) {
+        if (nav == NAV_UP) chapSel = (chapSel + NCHAP - 1) % NCHAP;
+        if (nav == NAV_DOWN) chapSel = (chapSel + 1) % NCHAP;
+        if (nav == NAV_OK) { if (chapSel < chapUnlocked) { curChap = chapSel; gameState = GS_STORY; endT = 0; } else sndDeny(); }
+        if (nav == NAV_BACK) gameState = GS_TITLE;
+        if (nav) playV(V_TONE, 0.04f, 900, 900, 0.15f, 0, 0);
+        return 1;
+    }
+    if (gameState == GS_STORY) {
+        if (nav == NAV_OK) {
+            if (curChap >= NCHAP) gameState = GS_TITLE;
+            else { startChapter(curChap, menuPlayers); gameState = GS_PLAY; paused = 0; }
+        }
+        if (nav == NAV_BACK) gameState = curChap >= NCHAP ? GS_TITLE : GS_CHAPTERS;
         return 1;
     }
     if (gameState == GS_OPTIONS) {
@@ -2554,9 +2789,18 @@ static int menuInput(int nav, SDL_Window *win, int *running)
     }
     return 0;
 }
+/* leaving an end screen: next chapter, chapter list or title */
+static void afterEnd(void)
+{
+    writeSave();
+    musicMode = 0;
+    if (gameState == GS_CHAPWIN) { curChap++; gameState = GS_STORY; endT = 0; }
+    else if (campaign && gameState == GS_OVER) gameState = GS_CHAPTERS;
+    else gameState = GS_TITLE;
+}
 int main(int argc, char **argv)
 {
-    int autoSecs = 0, autoMap = 0, autoPlayers = 2, validate = 0, windowed = 0, sheet = 0;
+    int autoSecs = 0, autoMap = 0, autoPlayers = 2, validate = 0, windowed = 0, sheet = 0, autoChapter = 0;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--autotest") && i + 1 < argc) { autotest = 1; autoSecs = atoi(argv[++i]); }
         else if (!strcmp(argv[i], "--map") && i + 1 < argc) autoMap = clampi(atoi(argv[++i]), 0, NMAPS - 1);
@@ -2565,6 +2809,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--validate")) validate = 1;
         else if (!strcmp(argv[i], "--window")) windowed = 1;
         else if (!strcmp(argv[i], "--sprites")) sheet = 1;
+        else if (!strcmp(argv[i], "--chapter") && i + 1 < argc) autoChapter = clampi(atoi(argv[++i]), 1, NCHAP);
     }
     int startWaveArg = wave;
     if (validate) { int bad = validateMaps(); printf(bad ? "MAP PROBLEMS: %d\n" : "ALL MAPS OK\n", bad); return bad ? 1 : 0; }
@@ -2588,20 +2833,26 @@ int main(int argc, char **argv)
     buildTextures();
     buildSprites();
     if (sheet) {
-        static const int ids[10] = {SP_Z + 0, SP_Z + 9 + 1, SP_Z + 18 + 4, SP_P1, SP_CRAWL, SP_CRAWL + 2, SP_BLOAT, SP_BRUTE, SP_BRUTE + 5, SP_P2};
+        static const int ids[10] = {SP_Z + 0, SP_Z + 9 + 1, SP_Z + 18 + 4, SP_P1, SP_CRAWL, SP_CRAWL + 2, SP_BLOAT, SP_BRUTE, SP_DRAGON + 4, SP_P2};
         for (int i = 0; i < FBW * FBH; i++) fb[i] = 0xFF302830;
         for (int k = 0; k < 10; k++)
             for (int y = 0; y < SS; y++) for (int x = 0; x < SS; x++) { uint32_t c = spr[ids[k]][y * SS + x]; if (c) fb[(10 + (k / 5) * 170 + y) * FBW + (k % 5) * 128 + x] = c; }
         shot("sprites.bmp"); SDL_Quit(); return 0;
     }
     if (autotest) {
-        resetGame(autoPlayers, autoMap); gameState = GS_PLAY;
-        if (startWaveArg > 1) { wave = startWaveArg - 1; for (int i = 0; i < 2; i++) pl[i].points = 20000; }
+        if (autoChapter > 0) {
+            startChapter(autoChapter - 1, autoPlayers); gameState = GS_PLAY;
+            if (startWaveArg > 1) wave = CHAP[curChap].startWave - 1 + startWaveArg - 1;
+            for (int i = 0; i < 2; i++) pl[i].points = 20000;
+        } else {
+            resetGame(autoPlayers, autoMap); gameState = GS_PLAY;
+            if (startWaveArg > 1) { wave = startWaveArg - 1; for (int i = 0; i < 2; i++) pl[i].points = 20000; }
+        }
     }
 
     Uint64 last = SDL_GetPerformanceCounter(), freq = SDL_GetPerformanceFrequency();
     float acc = 0.f, simT = 0.f;
-    double renderMs = 0; int frames = 0, nextShot = 1, maxAliveSeen = 0, typesSeen[4] = {0, 0, 0, 0};
+    double renderMs = 0; int frames = 0, nextShot = 1, maxAliveSeen = 0, typesSeen[5] = {0, 0, 0, 0, 0};
     int running = 1;
     while (running) {
         SDL_Event e;
@@ -2624,11 +2875,11 @@ int main(int argc, char **argv)
                 else if (sc == SDL_SCANCODE_RIGHT || sc == SDL_SCANCODE_D) nav = NAV_RIGHT;
                 else if (sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_SPACE) nav = NAV_OK;
                 else if (sc == SDL_SCANCODE_ESCAPE) nav = NAV_BACK;
-                if (gameState == GS_TITLE || gameState == GS_OPTIONS) menuInput(nav, win, &running);
+                if (gameState == GS_TITLE || gameState == GS_OPTIONS || gameState == GS_CHAPTERS || gameState == GS_STORY) menuInput(nav, win, &running);
                 else if (gameState == GS_PLAY && !e.key.repeat) {
                     if (sc == SDL_SCANCODE_ESCAPE || sc == SDL_SCANCODE_P) paused = !paused;
                     else if (paused && sc == SDL_SCANCODE_Q) { gameState = GS_TITLE; paused = 0; musicMode = 0; writeSave(); }
-                } else if ((gameState == GS_OVER || gameState == GS_WIN) && endT > 2.5f && !e.key.repeat) { gameState = GS_TITLE; writeSave(); }
+                } else if ((gameState == GS_OVER || gameState == GS_WIN || gameState == GS_CHAPWIN) && endT > 2.5f && !e.key.repeat) afterEnd();
             }
             if (e.type == SDL_CONTROLLERBUTTONDOWN) {
                 int b = e.cbutton.button;
@@ -2638,11 +2889,11 @@ int main(int argc, char **argv)
                 else if (b == SDL_CONTROLLER_BUTTON_DPAD_RIGHT) nav = NAV_RIGHT;
                 else if (b == SDL_CONTROLLER_BUTTON_A || b == SDL_CONTROLLER_BUTTON_START) nav = NAV_OK;
                 else if (b == SDL_CONTROLLER_BUTTON_B || b == SDL_CONTROLLER_BUTTON_BACK) nav = NAV_BACK;
-                if (gameState == GS_TITLE || gameState == GS_OPTIONS) menuInput(nav, win, &running);
+                if (gameState == GS_TITLE || gameState == GS_OPTIONS || gameState == GS_CHAPTERS || gameState == GS_STORY) menuInput(nav, win, &running);
                 else if (gameState == GS_PLAY) {
                     if (b == SDL_CONTROLLER_BUTTON_START) paused = !paused;
                     else if (paused && b == SDL_CONTROLLER_BUTTON_BACK) { gameState = GS_TITLE; paused = 0; musicMode = 0; writeSave(); }
-                } else if ((gameState == GS_OVER || gameState == GS_WIN) && endT > 2.5f) { gameState = GS_TITLE; writeSave(); }
+                } else if ((gameState == GS_OVER || gameState == GS_WIN || gameState == GS_CHAPWIN) && endT > 2.5f) afterEnd();
             }
         }
         Uint64 now = SDL_GetPerformanceCounter();
@@ -2656,16 +2907,18 @@ int main(int argc, char **argv)
             if (gameState == GS_PLAY && !paused) {
                 updateGame(1.f / 60.f); simT += 1.f / 60.f;
                 if (gameState != GS_PLAY && !autotest) writeSave();
-            } else if (gameState == GS_OVER || gameState == GS_WIN) endT += 1.f / 60.f;
+            } else if (gameState == GS_OVER || gameState == GS_WIN || gameState == GS_CHAPWIN || gameState == GS_STORY) endT += 1.f / 60.f;
         }
         if (autotest) {
             int a = liveZombies(); if (a > maxAliveSeen) maxAliveSeen = a;
             for (int i = 0; i < MAXZ; i++) if (zs[i].on) typesSeen[zs[i].type] = 1;
         }
         Uint64 r0 = SDL_GetPerformanceCounter();
-        if (gameState == GS_PLAY || gameState == GS_OVER || gameState == GS_WIN) computeLights(menuT, paused ? 0.f : frameDt);
+        if (gameState == GS_PLAY || gameState == GS_OVER || gameState == GS_WIN || gameState == GS_CHAPWIN) computeLights(menuT, paused ? 0.f : frameDt);
         if (gameState == GS_TITLE) renderTitle(menuT);
         else if (gameState == GS_OPTIONS) renderOptions(menuT);
+        else if (gameState == GS_CHAPTERS) renderChapters(menuT);
+        else if (gameState == GS_STORY) renderStory(menuT, curChap);
         else {
             for (int i = 0; i < nPlayers; i++) { int x, y, w, h; viewRect(i, &x, &y, &w, &h); renderView(i, x, y, w, h); }
             if (nPlayers == 2) {
@@ -2682,7 +2935,7 @@ int main(int argc, char **argv)
             if (gameState == GS_OVER) {
                 blendRect(0, 0, FBW, FBH, 0xFF300000, (int)clampf(endT * 120, 0, 190));
                 drawTextC(FBW / 2, 100, 4, 0xFFFF3030, "THE HOLD HAS FALLEN");
-                sprintf(buf, "YOU SURVIVED %d WAVE%s", wave > 0 ? wave - 1 : 0, wave - 1 == 1 ? "" : "S");
+                { int sw = chapWave() - 1; if (sw < 0) sw = 0; sprintf(buf, "YOU SURVIVED %d WAVE%s", sw, sw == 1 ? "" : "S"); }
                 drawTextC(FBW / 2, 160, 3, 0xFFF0F0F0, buf);
             }
             if (gameState == GS_WIN) {
@@ -2691,7 +2944,13 @@ int main(int argc, char **argv)
                 sprintf(buf, "YOU HELD %s FOR 99 WAVES!", MAPS[curMap].name);
                 drawTextC(FBW / 2, 160, 2, 0xFF402010, buf);
             }
-            if (gameState == GS_OVER || gameState == GS_WIN) {
+            if (gameState == GS_CHAPWIN) {
+                blendRect(0, 0, FBW, FBH, 0xFFFFD890, (int)clampf(endT * 100, 0, 160));
+                drawTextC(FBW / 2, 80, 4, 0xFF402010, "CHAPTER COMPLETE");
+                drawTextC(FBW / 2, 130, 2, 0xFF402010, CHAP[curChap].title);
+                drawTextC(FBW / 2, 160, 1, 0xFF402010, CHAP[curChap].win);
+            }
+            if (gameState == GS_OVER || gameState == GS_WIN || gameState == GS_CHAPWIN) {
                 for (int i = 0; i < nPlayers; i++) {
                     sprintf(buf, "P%d  %d KILLS  %d REVIVES  $%d", i + 1, pl[i].kills, pl[i].revives, pl[i].points);
                     drawTextC(FBW / 2, 210 + i * 22, 2, i == 0 ? 0xFFFFA050 : 0xFF60D0FF, buf);
@@ -2734,19 +2993,19 @@ int main(int argc, char **argv)
                        WEAP[p->weap[p->cur]].name, p->lvl[p->cur], p->vest, trapOn);
                 p->x = sx; p->y = sy; p->ang = sa; p->points = pts;
             }
-            if (simT >= nextShot * 10.f || ((gameState == GS_OVER || gameState == GS_WIN) && nextShot < 99)) {
+            if (simT >= nextShot * 10.f || ((gameState == GS_OVER || gameState == GS_WIN || gameState == GS_CHAPWIN) && nextShot < 99)) {
                 char name[64]; sprintf(name, "autotest-%02d.bmp", nextShot); shot(name);
                 printf("t=%.0fs wave=%d alive=%d left=%d p1=$%d k%d hp%.0f st%d p2=$%d k%d hp%.0f st%d render=%.2fms\n",
                        simT, wave, liveZombies(), toSpawn + bossesToSpawn, pl[0].points, pl[0].kills, pl[0].hp, pl[0].state,
                        pl[1].points, pl[1].kills, pl[1].hp, pl[1].state, renderMs / frames);
                 fflush(stdout);
-                if (gameState == GS_OVER || gameState == GS_WIN) { printf("%s at wave %d\n", gameState == GS_WIN ? "WON" : "GAME OVER", wave); nextShot = 99; }
+                if (gameState == GS_OVER || gameState == GS_WIN || gameState == GS_CHAPWIN) { printf("%s at wave %d (chapter wave %d)\n", gameState == GS_WIN ? "WON" : gameState == GS_CHAPWIN ? "CHAPTER COMPLETE" : "GAME OVER", wave, chapWave()); nextShot = 99; }
                 else nextShot++;
             }
             if (simT >= autoSecs || nextShot == 99) running = 0;
         }
     }
-    if (autotest) printf("max alive %d, types seen: normal=%d crawler=%d bloater=%d brute=%d\n", maxAliveSeen, typesSeen[0], typesSeen[1], typesSeen[2], typesSeen[3]);
+    if (autotest) printf("max alive %d, types seen: normal=%d crawler=%d bloater=%d brute=%d dragon=%d\n", maxAliveSeen, typesSeen[0], typesSeen[1], typesSeen[2], typesSeen[3], typesSeen[4]);
     if (!autotest) writeSave();
     SDL_Quit();
     return 0;
