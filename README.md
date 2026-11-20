@@ -80,3 +80,16 @@ All Bible and Inferno levels are generated from fixed seeds, and `--validate` ch
 
 ## When you fall
 The game-over screen reads **GOD SAVED YOUR SOUL**, with a cross beneath.
+
+## Easy Mode
+Options > Easy Mode gives both players three overwhelming weapons with unlimited use at the start of every level:
+- **Fire from Heaven** (2 Kings 1:10): rapid fire bolts that pierce through several demons.
+- **Trumpet of Jericho** (Joshua 6:20): one blast flattens everything in a wide cone.
+- **Sword of the Lord** (Judges 7:20): a blade of light that cuts down everything around you.
+
+## Black screen over remote desktop (RustDesk, RDP)
+Remote-desktop tools often can't capture a fullscreen GPU window and show black. Start the game with:
+
+    rotwood-hold.exe --software --window
+
+`--software` draws without the GPU path (the game already renders on the CPU, so it costs very little), and `--window` avoids exclusive fullscreen.

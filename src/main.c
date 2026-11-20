@@ -892,7 +892,7 @@ enum { V_NOISE, V_TONE, V_GROAN };
 typedef struct { int type; float t, dur, f0, f1, vol, ph, lp, k, delay; } Voice;
 static Voice voices[24];
 static SDL_AudioDeviceID audioDev;
-static int optMaster = 8, optMusic = 6, optTurn = 5, optSplit = 0, optFull = 1, optAim = 2;
+static int optMaster = 8, optMusic = 6, optTurn = 5, optSplit = 0, optFull = 1, optAim = 2, optEasy = 0;
 static volatile int musicMode;          /* 0 calm, 1 wave in progress */
 static double musClock;
 static float padPh[6], padLp, bassPh, bassEnv, bassF, melPh, melEnv, melF, hatEnv, windLp, windLp2, windT;
@@ -1408,14 +1408,18 @@ static int zActive(int zx, int zy)
 /* Game state                                                         */
 /* ------------------------------------------------------------------ */
 /* Old Testament arsenal. melee weapons need no ammo and hit everything in their arc */
-typedef struct { const char *name; int dmg, pellets; float spread, rate; int mag, res, cost, pierce, autoFire; float reload, kick, range; int melee; } Weapon;
-enum { W_PISTOL, W_SHOTGUN, W_SMG, W_RIFLE, W_LMG, W_COUNT };
+typedef struct { const char *name; int dmg, pellets; float spread, rate; int mag, res, cost, pierce, autoFire; float reload, kick, range; int melee, infinite; } Weapon;
+enum { W_PISTOL, W_SHOTGUN, W_SMG, W_RIFLE, W_LMG, W_FIRE, W_TRUMPET, W_HOLYSWORD, W_COUNT };
 static const Weapon WEAP[W_COUNT] = {
-    {"DAVID'S SLING",     55, 1, 0.010f, 0.38f, 10,  80,  300, 0, 0, 1.2f, 0.3f, 40.f, 0},   /* 1 Samuel 17:49 */
-    {"SAMSON'S JAWBONE",  75, 6, 0.320f, 0.55f,  1,   0,  900, 0, 1, 0.0f, 0.7f, 1.9f, 1},   /* Judges 15:15 */
-    {"JONATHAN'S BOW",    80, 1, 0.012f, 0.30f, 12, 120, 1200, 0, 1, 1.6f, 0.3f, 40.f, 0},   /* 2 Samuel 1:22 */
-    {"SAUL'S JAVELIN",   200, 1, 0.004f, 0.75f,  4,  24, 1500, 1, 0, 1.8f, 0.8f, 40.f, 0},   /* 1 Samuel 18:11 */
-    {"GOLIATH'S SWORD",  170, 5, 0.340f, 0.42f,  1,   0, 3000, 0, 1, 0.0f, 0.9f, 2.4f, 1},   /* 1 Samuel 21:9 */
+    {"DAVID'S SLING",     55, 1, 0.010f, 0.38f, 10,  80,  300, 0, 0, 1.2f, 0.3f, 40.f, 0, 0},   /* 1 Samuel 17:49 */
+    {"SAMSON'S JAWBONE",  75, 6, 0.320f, 0.55f,  1,   0,  900, 0, 1, 0.0f, 0.7f, 1.9f, 1, 0},   /* Judges 15:15 */
+    {"JONATHAN'S BOW",    80, 1, 0.012f, 0.30f, 12, 120, 1200, 0, 1, 1.6f, 0.3f, 40.f, 0, 0},   /* 2 Samuel 1:22 */
+    {"SAUL'S JAVELIN",   200, 1, 0.004f, 0.75f,  4,  24, 1500, 1, 0, 1.8f, 0.8f, 40.f, 0, 0},   /* 1 Samuel 18:11 */
+    {"GOLIATH'S SWORD",  170, 5, 0.340f, 0.42f,  1,   0, 3000, 0, 1, 0.0f, 0.9f, 2.4f, 1, 0},   /* 1 Samuel 21:9 */
+    /* Easy Mode's gifts: unlimited and overwhelming */
+    {"FIRE FROM HEAVEN",   420, 1, 0.020f, 0.08f, 1, 0, 0, 3, 1, 0.0f, 0.2f, 40.f, 0, 1},   /* 2 Kings 1:10 */
+    {"TRUMPET OF JERICHO", 1200, 15, 0.500f, 1.00f, 1, 0, 0, 12, 0, 0.0f, 1.2f, 14.f, 0, 1},  /* Joshua 6:20 */
+    {"SWORD OF THE LORD",  2500, 9, 0.600f, 0.30f, 1, 0, 0, 0, 1, 0.0f, 0.9f, 3.4f, 1, 1},    /* Judges 7:20 */
 };
 static int buyWeapon(char c) { return c == 'p' ? W_PISTOL : c == 'a' ? W_SHOTGUN : c == 'c' ? W_SMG : c == 'b' ? W_RIFLE : c == 'l' ? W_LMG : -1; }
 
@@ -1727,6 +1731,13 @@ static void givePistol(Player *p)
     p->weap[0] = W_PISTOL; p->lvl[0] = 0; p->mag[0] = WEAP[W_PISTOL].mag; p->res[0] = WEAP[W_PISTOL].res;
     p->slots = 1; p->cur = 0; p->reloadT = 0;
 }
+/* Easy Mode: the three gifts, with unlimited use */
+static void giveSupers(Player *p)
+{
+    static const int w[3] = {W_FIRE, W_TRUMPET, W_HOLYSWORD};
+    for (int k = 0; k < 3; k++) { p->weap[k] = w[k]; p->lvl[k] = 0; p->mag[k] = 1; p->res[k] = 0; }
+    p->slots = p->maxSlots = 3; p->cur = 0; p->reloadT = 0;
+}
 static void placeAtStart(Player *p, int which)
 {
     int k = 0;
@@ -1773,6 +1784,7 @@ static void startChapter(int c, int players)
             p->cur = k->cur; p->slots = k->slots; p->maxSlots = k->maxSlots;
             p->vest = k->vest; p->hands = k->hands; p->maxHp = k->maxHp; p->hp = k->maxHp;
         } else p->points += 300 * (C->startWave - 1);
+        if (optEasy) giveSupers(p);
     }
     carryValid = 0;
 }
@@ -1805,6 +1817,7 @@ static void startWave(void)
             Player *p = &pl[i];
             p->state = ST_UP; p->hp = p->maxHp = 100; p->vest = 0; p->hands = 0; p->maxSlots = 2;
             placeAtStart(p, i); givePistol(p);
+            if (optEasy) giveSupers(p);
             say(p, "YOU'RE BACK");
         }
     sndRoundStart();
@@ -1929,17 +1942,20 @@ static void fire(Player *p)
     int s = p->cur, w = p->weap[s];
     const Weapon *W = &WEAP[w];
     if (p->reloadT > 0.f || p->fireCd > 0.f) return;
-    if (!W->melee && p->mag[s] <= 0) {
+    if (!W->melee && !W->infinite && p->mag[s] <= 0) {
         if (p->res[s] > 0) { p->reloadLen = p->reloadT = W->reload * (p->hands ? 0.5f : 1.f); playV(V_TONE, 0.08f, 300, 200, 0.2f, 0, 0); }
         else { sndDeny(); p->fireCd = 0.3f; }
         return;
     }
-    if (!W->melee) p->mag[s]--;
+    if (!W->melee && !W->infinite) p->mag[s]--;
     p->fireCd = W->rate; p->recoil = 1.f; p->shake = clampf(p->shake + W->kick * 0.25f, 0, 0.5f);
     switch (w) {
         case W_PISTOL:  playV(V_NOISE, 0.20f, 0, 0, 0.35f, 0.06f, 0); playV(V_TONE, 0.07f, 220, 120, 0.15f, 0, 0.05f); break; /* sling whirl and release */
         case W_SMG:     playV(V_TONE, 0.14f, 340, 160, 0.35f, 0, 0); playV(V_NOISE, 0.08f, 0, 0, 0.2f, 0.3f, 0); break;     /* bowstring twang */
         case W_RIFLE:   playV(V_NOISE, 0.35f, 0, 0, 0.55f, 0.04f, 0); playV(V_TONE, 0.1f, 160, 90, 0.2f, 0, 0); break;     /* heavy throw */
+        case W_FIRE:    playV(V_NOISE, 0.12f, 0, 0, 0.4f, 0.6f, 0); playV(V_TONE, 0.08f, 900, 500, 0.12f, 0, 0); break;   /* crackling fire */
+        case W_TRUMPET: playV(V_TONE, 0.9f, 233, 230, 0.6f, 0, 0); playV(V_TONE, 0.9f, 349, 345, 0.4f, 0, 0); playV(V_NOISE, 0.8f, 0, 0, 0.6f, 0.04f, 0.1f); break; /* the walls fell */
+        case W_HOLYSWORD: playV(V_NOISE, 0.25f, 0, 0, 0.5f, 0.05f, 0); playV(V_TONE, 0.3f, 1320, 1760, 0.15f, 0, 0); break;
         default:        playV(V_NOISE, 0.22f, 0, 0, 0.5f, 0.035f, 0); break;                                                /* swing */
     }
     if (p->lvl[s]) playV(V_TONE, 0.08f, 900, 300, 0.12f, 0, 0);
@@ -1953,7 +1969,7 @@ static void fire(Player *p)
         float wallD = castDist(p->x, p->y, dx, dy);
         if (wallD > W->range) wallD = W->range;
         float minT = 0.f, endT = wallD;
-        for (int pass = 0; pass < (W->pierce ? 4 : 1); pass++) {
+        for (int pass = 0; pass < (W->pierce > 1 ? W->pierce : W->pierce ? 4 : 1); pass++) {
             Zombie *hit = NULL; float bestT = wallD;
             for (int i = 0; i < MAXZ; i++) {
                 Zombie *z = &zs[i];
@@ -1994,8 +2010,8 @@ static void fire(Player *p)
                 Particle *q = &parts[i];
                 q->on = 1; q->x = p->x + dx * 0.4f; q->y = p->y + dy * 0.4f; q->z = 0.45f;
                 q->vx = dx * 22.f; q->vy = dy * 22.f; q->vz = 2.f; q->life = endT / 22.f;
-                q->size = w == W_RIFLE ? 0.07f : 0.045f;
-                q->col = w == W_PISTOL ? 0xFF8A8A84 : w == W_SMG ? 0xFF6A4A28 : 0xFF9A7A50;
+                q->size = w == W_RIFLE ? 0.07f : w == W_TRUMPET ? 0.12f : 0.045f;
+                q->col = w == W_FIRE ? EM(0xFFFF8020) : w == W_TRUMPET ? EM(0xFFFFE070) : w == W_PISTOL ? 0xFF8A8A84 : w == W_SMG ? 0xFF6A4A28 : 0xFF9A7A50;
                 break;
             }
         }
@@ -2737,6 +2753,23 @@ static void drawWeapon(Player *p, int vx, int vy, int vw, int vh)
             parts[n++] = (GPart){0.25f, 1.08f, 3.6f, 0.f, 0.f, steel};
             parts[n++] = (GPart){0.30f, 0.95f, 0.8f, 0.f, 0.f, scaleRGB(steel, 0.7f)};
             break;
+        case W_FIRE:     /* fire from heaven, held in an open hand */
+            parts[n++] = (GPart){0.30f, 0.80f, 6.5f, -2.f, 0.f, EM(0xFFD03010)};
+            parts[n++] = (GPart){0.34f, 0.72f, 4.f, -3.f, 0.f, EM(0xFFFF8020)};
+            parts[n++] = (GPart){0.38f, 0.62f, 2.f, -4.f, 0.f, EM(0xFFFFF0A0)};
+            parts[n++] = (GPart){0.05f, 0.32f, 7.f, 2.f, 0.f, skin};
+            break;
+        case W_TRUMPET:  /* the ram's-horn trumpet of Jericho */
+            parts[n++] = (GPart){0.00f, 0.80f, 2.f, 0.f, 0.f, 0xFFE8C040};
+            parts[n++] = (GPart){0.78f, 0.90f, 5.f, 0.f, 0.f, 0xFFF0D060};
+            parts[n++] = (GPart){0.88f, 1.04f, 9.f, 0.f, 0.f, EM(0xFFFFE070)};
+            break;
+        case W_HOLYSWORD:/* the sword of the Lord: a blade of light */
+            parts[n++] = (GPart){0.00f, 0.20f, 2.4f, 0.f, 0.f, 0xFF5A3418};
+            parts[n++] = (GPart){0.20f, 0.25f, 10.f, 0.f, 0.f, 0xFFF0C040};
+            parts[n++] = (GPart){0.25f, 1.12f, 4.f, 0.f, 0.f, EM(0xFFFFF4C0)};
+            parts[n++] = (GPart){0.30f, 1.00f, 1.f, 0.f, 0.f, EM(0xFFFFFFFF)};
+            break;
     }
     parts[n++] = (GPart){0.02f, 0.22f, 6.f, 6.f, 0.f, skin};          /* gripping hand */
     parts[n++] = (GPart){-0.40f, 0.06f, 12.f, 11.f, 0.f, sleeve};          /* armoured cyber-suit arm */
@@ -3016,11 +3049,11 @@ static void renderView(int pi, int vx, int vy, int vw, int vh)
         int s = p->cur;
         char nm[40];
         if (p->lvl[s]) sprintf(nm, "%s +%d", WEAP[p->weap[s]].name, p->lvl[s]); else strcpy(nm, WEAP[p->weap[s]].name);
-        if (WEAP[p->weap[s]].melee) strcpy(buf, "MELEE"); else sprintf(buf, "%d / %d", p->mag[s], p->res[s]);
+        if (WEAP[p->weap[s]].infinite) strcpy(buf, "UNLIMITED"); else if (WEAP[p->weap[s]].melee) strcpy(buf, "MELEE"); else sprintf(buf, "%d / %d", p->mag[s], p->res[s]);
         drawText(vx + vw - 10 - textW(buf, big), vy + vh - 10 - 7 * big, big, (p->mag[s] || WEAP[p->weap[s]].melee) ? 0xFFF0F0F0 : 0xFFFF4040, buf);
         { int ns = textW(nm, 2) > vw - 120 ? 1 : 2; drawText(vx + vw - 10 - textW(nm, ns), vy + vh - 16 - 7 * big - 7 * ns, ns, p->lvl[s] ? 0xFFFFE890 : 0xFFC8C8C8, nm); }
         if (p->reloadT > 0) drawTextC(vx + vw / 2, vy + vh / 2 + 18, 2, 0xFFF0F0F0, "RELOADING");
-        else if (WEAP[p->weap[s]].melee) { }
+        else if (WEAP[p->weap[s]].melee || WEAP[p->weap[s]].infinite) { }
         else if (p->mag[s] == 0 && p->res[s] == 0) { if ((SDL_GetTicks() / 300) & 1) drawTextC(vx + vw / 2, vy + vh / 2 + 18, 2, 0xFFFF4040, "NO AMMO"); }
         else if (p->mag[s] <= wMag(p, s) / 4 && ((SDL_GetTicks() / 300) & 1)) drawTextC(vx + vw / 2, vy + vh / 2 + 18, 2, 0xFFFFC040, p->mag[s] == 0 ? "RELOAD" : "LOW AMMO");
         char pr[64]; promptFor(p, pr);
@@ -3190,17 +3223,18 @@ static void renderStory(float t, int c)
 static void renderOptions(float t)
 {
     titleBackdrop(t);
-    blendRect(120, 96, 400, 210, 0xFF000000, 170);
-    char rows[7][48];
+    blendRect(110, 96, 420, 220, 0xFF000000, 170);
+    char rows[8][48];
     sprintf(rows[0], "MASTER VOLUME  < %d >", optMaster);
     sprintf(rows[1], "MUSIC VOLUME  < %d >", optMusic);
     sprintf(rows[2], "TURN SPEED  < %d >", optTurn);
     sprintf(rows[3], "SPLIT SCREEN  < %s >", optSplit ? "TOP/BOTTOM" : "SIDE BY SIDE");
     sprintf(rows[4], "FULLSCREEN  < %s >", optFull ? "ON" : "OFF");
     sprintf(rows[5], "AIM ASSIST  < %s >", optAim == 2 ? "HIGH" : optAim == 1 ? "LOW" : "OFF");
-    strcpy(rows[6], "BACK");
+    sprintf(rows[6], "EASY MODE  < %s >", optEasy ? "ON: SUPER WEAPONS" : "OFF");
+    strcpy(rows[7], "BACK");
     drawTextC(FBW / 2, 104, 3, 0xFFF0F0F0, "OPTIONS");
-    for (int i = 0; i < 7; i++) drawTextC(FBW / 2, 136 + i * 22, 2, i == optSel ? 0xFFFFE070 : 0xFFD8D8D8, rows[i]);
+    for (int i = 0; i < 8; i++) drawTextC(FBW / 2, 132 + i * 21, 2, i == optSel ? 0xFFFFE070 : 0xFFD8D8D8, rows[i]);
 }
 
 /* ------------------------------------------------------------------ */
@@ -3221,6 +3255,7 @@ static void loadSave(void)
         if (fscanf(f, "%d", &a) == 1) optAim = clampi(a, 0, 2);
         if (fscanf(f, "%d", &a) == 1) unlockedArr[0] = clampi(a, 1, NBOOKS + 1);
         if (fscanf(f, "%d", &a) == 1) unlockedArr[1] = clampi(a, 1, NCIRCLES + 1);
+        if (fscanf(f, "%d", &a) == 1) optEasy = a & 1;
         fclose(f);
     }
 }
@@ -3231,7 +3266,7 @@ static void writeSave(void)
     FILE *f = saveDir[0] ? fopen(path, "w") : NULL;
     if (!f) return;
     for (int m = 0; m < NMAPS; m++) fprintf(f, "%d %d\n", bestWave[m], wonMap[m]);
-    fprintf(f, "%d %d %d %d %d\n%d\n%d\n%d\n", optMaster, optMusic, optTurn, optSplit, optFull, optAim, unlockedArr[0], unlockedArr[1]);
+    fprintf(f, "%d %d %d %d %d\n%d\n%d\n%d\n%d\n", optMaster, optMusic, optTurn, optSplit, optFull, optAim, unlockedArr[0], unlockedArr[1], optEasy);
     fclose(f);
 }
 
@@ -3289,18 +3324,19 @@ static int menuInput(int nav, SDL_Window *win, int *running)
         return 1;
     }
     if (gameState == GS_OPTIONS) {
-        if (nav == NAV_UP) optSel = (optSel + 6) % 7;
-        if (nav == NAV_DOWN) optSel = (optSel + 1) % 7;
-        if (nav == NAV_LEFT || nav == NAV_RIGHT || (nav == NAV_OK && optSel < 6)) {
+        if (nav == NAV_UP) optSel = (optSel + 7) % 8;
+        if (nav == NAV_DOWN) optSel = (optSel + 1) % 8;
+        if (nav == NAV_LEFT || nav == NAV_RIGHT || (nav == NAV_OK && optSel < 7)) {
             int d = nav == NAV_LEFT ? -1 : 1;
             if (optSel == 0) optMaster = clampi(optMaster + d, 0, 10);
             if (optSel == 1) optMusic = clampi(optMusic + d, 0, 10);
             if (optSel == 2) optTurn = clampi(optTurn + d, 1, 10);
             if (optSel == 3) optSplit ^= 1;
             if (optSel == 5) optAim = (optAim + 3 + d) % 3;
+            if (optSel == 6) optEasy ^= 1;
             if (optSel == 4) { optFull ^= 1; SDL_SetWindowFullscreen(win, optFull ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0); }
         }
-        if ((nav == NAV_OK && optSel == 6) || nav == NAV_BACK) { gameState = GS_TITLE; writeSave(); }
+        if ((nav == NAV_OK && optSel == 7) || nav == NAV_BACK) { gameState = GS_TITLE; writeSave(); }
         if (nav) playV(V_TONE, 0.04f, 900, 900, 0.15f, 0, 0);
         return 1;
     }
@@ -3317,7 +3353,7 @@ static void afterEnd(void)
 }
 int main(int argc, char **argv)
 {
-    int autoSecs = 0, autoMap = 0, autoPlayers = 2, validate = 0, windowed = 0, sheet = 0, autoChapter = 0, autoInferno = 0;
+    int autoSecs = 0, autoMap = 0, autoPlayers = 2, validate = 0, windowed = 0, sheet = 0, autoChapter = 0, autoInferno = 0, softwareRender = 0;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--autotest") && i + 1 < argc) { autotest = 1; autoSecs = atoi(argv[++i]); }
         else if (!strcmp(argv[i], "--map") && i + 1 < argc) autoMap = clampi(atoi(argv[++i]), 0, NMAPS - 1);
@@ -3326,6 +3362,8 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--validate")) validate = 1;
         else if (!strcmp(argv[i], "--window")) windowed = 1;
         else if (!strcmp(argv[i], "--god")) godMode = 1;
+        else if (!strcmp(argv[i], "--easy")) optEasy = 1;
+        else if (!strcmp(argv[i], "--software")) softwareRender = 1;
         else if (!strcmp(argv[i], "--sprites")) sheet = 1;
         else if (!strcmp(argv[i], "--chapter") && i + 1 < argc) autoChapter = clampi(atoi(argv[++i]), 1, NBOOKS);
         else if (!strcmp(argv[i], "--inferno") && i + 1 < argc) { autoChapter = clampi(atoi(argv[++i]), 1, NCIRCLES); autoInferno = 1; }
@@ -3339,7 +3377,8 @@ int main(int argc, char **argv)
     SDL_Window *win = SDL_CreateWindow("Rotwood Hold", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, FBW * 2, FBH * 2,
                                        optFull ? SDL_WINDOW_FULLSCREEN_DESKTOP : SDL_WINDOW_RESIZABLE);
     if (!win) { fprintf(stderr, "window: %s\n", SDL_GetError()); return 1; }
-    SDL_Renderer *ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    /* --software: skip the GPU path, which some remote-desktop tools (RustDesk, RDP) capture as a black screen */
+    SDL_Renderer *ren = SDL_CreateRenderer(win, -1, softwareRender ? SDL_RENDERER_SOFTWARE : (SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC));
     if (!ren) ren = SDL_CreateRenderer(win, -1, 0);
     SDL_RenderSetLogicalSize(ren, FBW, FBH);
     SDL_Texture *screenTex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, FBW, FBH);
@@ -3503,6 +3542,7 @@ int main(int argc, char **argv)
         SDL_RenderClear(ren);
         SDL_RenderCopy(ren, screenTex, NULL, NULL);
         SDL_RenderPresent(ren);
+        if (softwareRender && !autotest) SDL_Delay(12);         /* no vsync in software mode: keep to about 60 fps */
 
         if (autotest) {
             static int buyTested;
