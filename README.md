@@ -52,20 +52,31 @@ Upgrade bench (each gun up to +3), electric fence trap ($1000), and a supply she
 ## Aim assist
 Made for keyboards and gamepads (there's no mouse aiming). Your view is pulled gently toward the nearest demon in front of you, and shots bend onto it. Set it to Off, Low or High (the default) in Options.
 
-## Campaign
-Seven chapters, each opening with a scripture card (King James Version, public domain). Chapters unlock in order, and your progress is saved.
-
-| # | Chapter | Scripture | Map | Goal |
-|---|---|---|---|---|
-| 1 | The Bottomless Pit | Revelation 9:1-3 | Rotwood Farm | Survive 5 waves |
-| 2 | Unclean Spirits | Revelation 16:13-14 | Millbrook Mill | Survive 6 waves (frog spirits come early) |
-| 3 | The Watchman | Ezekiel 33:6 | Gullwatch Light | Survive 7 waves |
-| 4 | War in Heaven | Revelation 12:7-9 | Hollow Chapel | Survive 8 waves (fallen angels) |
-| 5 | The Beast from the Sea | Revelation 13:1 | Ironvale Depot | Survive 9 waves (a Beast every 3rd wave) |
-| 6 | Armageddon | Revelation 16:16 | Rotwood Farm | Survive 10 waves (everything) |
-| 7 | The Dragon Bound | Revelation 12:3, 20:2 | Hollow Chapel | Survive 6 waves, then slay the great red Dragon |
-
-The Dragon is red, with seven heads, ten horns and seven crowns on its heads (Revelation 12:3), and it breathes fire. The ending card quotes Revelation 21:4.
 
 ## Wave sizes
 The number of demons in each wave follows the Fibonacci sequence. Endless mode uses wave N = Fib(N): 1, 1, 2, 3, 5, 8, 13 ... Wave 20 has 6,765 demons and wave 30 has 832,040, so the late waves pour in very fast. Campaign chapters start at the 4th term (3, 5, 8, 13 ...).
+
+## Campaign: the 66 books (replaces the 7 chapters)
+One level for every book of the Bible, Genesis to Revelation. Each opens with a verse from that book, quoted word for word from the King James Version (public domain), and you survive 3 waves to finish it. Every sixth book a Beast rises, Mark (5:9, "we are many") brings the fallen angels, and Revelation ends with the great red Dragon. Your weapons and money carry over when you go straight on to the next book.
+
+## Inferno: Dante's nine circles
+Ten waves in each circle of Dante's *Inferno* (quotations from Longfellow's 1867 translation, public domain). After the 10th wave the sealed gate opens, and walking through it takes you down to the next circle with your loadout. Escape the ninth circle to win.
+
+| Circle | Hazard |
+|---|---|
+| I Limbo | Pits to jump |
+| II Lust | The hurricane pushes you around |
+| III Gluttony | Freezing mire slows you |
+| IV Greed | Chasms |
+| V Wrath | The marsh of Styx slows you |
+| VI Heresy | Burning tombs hurt to stand on |
+| VII Violence | A river of boiling blood to jump |
+| VIII Fraud | The ditches of Malebolge |
+| IX Treachery | Slippery ice, and Lucifer frozen in it (three faces, six bat wings) |
+
+**Jumping:** P1 Left Shift (or V), P2 Right Ctrl, gamepad RB. If you fall into a pit or the river you take damage and land back at the edge. Demons fly over gaps.
+
+All Bible and Inferno levels are generated from fixed seeds, and `--validate` checks every one of them.
+
+## When you fall
+The game-over screen reads **GOD SAVED YOUR SOUL**, with a cross beneath.

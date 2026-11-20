@@ -138,7 +138,7 @@ enum {
     TX_WOOD, TX_STONE, TX_BRICK, TX_PLASTER, TX_METAL, TX_FENCE, TX_CRATE, TX_PILLAR,
     TX_DOOR750, TX_DOOR1000, TX_DOOR1250, TX_DOOR1500,
     TX_BUY_P, TX_BUY_A, TX_BUY_C, TX_BUY_B, TX_BUY_L,
-    TX_BENCH, TX_SH_VEST, TX_SH_HANDS, TX_SH_STRAP, TX_SWITCH_OFF, TX_SWITCH_ON,
+    TX_BENCH, TX_SH_VEST, TX_SH_HANDS, TX_SH_STRAP, TX_SWITCH_OFF, TX_SWITCH_ON, TX_ICE, TX_GATE,
     TX_WIN0, TX_COUNT = TX_WIN0 + 7
 };
 static uint32_t tex[TX_COUNT][TS * TS];
@@ -281,6 +281,16 @@ static void buildTextures(void)
     tRect(tex[TX_CRATE], 0, 0, 5, 63, 0xFF4A3420); tRect(tex[TX_CRATE], 58, 0, 63, 63, 0xFF4A3420);
     for (int i = 6; i < 58; i++) tRect(tex[TX_CRATE], i - 2, i - 2, i + 2, i + 2, 0xFF4A3420);
     blocks(tex[TX_PILLAR], 0xFF8E8A82, 0xFF4A4642, 64, 12, 41, 22);
+    /* ice of Cocytus */
+    blocks(tex[TX_ICE], 0xFF9CC0DC, 0xFF5E84A8, 32, 20, 71, 12);
+    for (int k = 0; k < 6; k++) for (int s = 0; s < 22; s++) { int x = (int)(hash2(k, 1, 73) % 64) + s / 2, y = (int)(hash2(k, 2, 73) % 40) + s; if (x < TS && y < TS) tex[TX_ICE][y * TS + x] = 0xFFE8F4FF; }
+    /* the sealed gate: iron bars over a stairway down */
+    for (int y = 0; y < TS; y++) for (int x = 0; x < TS; x++) {
+        uint32_t c = mixC(0xFF100604, 0xFF5A1808, y * 4);
+        if (x % 10 < 3) c = noisy(0xFF4A4A52, x, y, 75, 18);
+        if (y < 5 || y > 58 || (y > 28 && y < 33)) c = noisy(0xFF3A3A42, x, y, 76, 18);
+        tex[TX_GATE][y * TS + x] = c;
+    }
     static const int costs[4] = {750, 1000, 1250, 1500};
     for (int k = 0; k < 4; k++) {
         uint32_t *t = tex[TX_DOOR750 + k];
@@ -358,7 +368,8 @@ enum {
     SP_BRUTE = 35,                    /* 9 */
     SP_P1 = 44, SP_P2, SP_PDOWN, SP_PU_AMMO, SP_PU_FIRE, SP_PU_GOLD, SP_TORCH0, SP_TORCH1,
     SP_DRAGON,                        /* 9 frames, like the Beast */
-    SP_COUNT = SP_DRAGON + 9
+    SP_LUCIFER = SP_DRAGON + 9,
+    SP_COUNT = SP_LUCIFER + 9
 };
 static uint32_t *spr[SP_COUNT];
 static uint32_t *cur;               /* sprite being drawn */
@@ -366,6 +377,7 @@ static uint32_t *cur;               /* sprite being drawn */
 static void sPix(int x, int y, uint32_t c) { if (x >= 0 && y >= 0 && x < SS && y < SS) cur[y * SS + x] = c; }
 static const float LX = -0.45f, LY = -0.55f, LZ = 0.70f;
 static void sTri(float x0, float y0, float x1, float y1, float x2, float y2, uint32_t col, float f);
+static void sQuad(float ax, float ay, float bx, float by, float cx, float cy, float dx, float dy, uint32_t col, float f);
 static void sBall(float cx, float cy, float rx, float ry, uint32_t col, int seed)
 {
     for (int y = (int)(cy - ry - 1); y <= (int)(cy + ry + 1); y++)
@@ -451,61 +463,59 @@ static void powerFrame(uint32_t c, const char *glyph)
 }
 /* ---- Demons, drawn from their descriptions in scripture ---- */
 typedef struct { uint32_t hair, plate, hide, skin; } LocLook;
-static void sWing(float bx, float by, float tx, float ty, float w, uint32_t col)
-{
-    for (int k = 0; k <= 6; k++) {
-        float ex = tx + (bx - tx) * k * 0.09f, ey = ty + k * w * 0.4f;
-        sLimb(bx, by, ex, ey, 2.5f, 1.5f, k & 1 ? scaleRGB(col, 0.8f) : col, 0);
-    }
-    sLimb(bx, by, tx, ty, 2.2f, 1.2f, scaleRGB(col, 0.5f), 0);
-}
 static void locustFrame(LocLook *L, int f, int seed)
 {
+    (void)seed;
     float ph = f < 4 ? f * PI_F / 2.f : 0.f;
     float lift = f < 4 ? sinf(ph) * 6.f : 0.f, la = lift > 0 ? lift : 0, ra = lift < 0 ? -lift : 0;
     float flap = (f & 1) ? 10.f : -6.f;
-    uint32_t wing = 0xFF9A9078, chit = 0xFF4A3A20, gold = 0xFFE0B030, tooth = 0xFFF0E8D0;
-    /* "the sound of their wings was as the sound of chariots of many horses" */
-    sWing(52, 54, 6, 18 + flap, 14, wing);
-    sWing(76, 54, 122, 18 + flap, 14, wing);
-    /* "they had tails like unto scorpions, and there were stings in their tails" */
-    if (f == 4 || f == 5) {
-        float k = f == 5 ? 1.f : 0.f;
-        sLimb(64, 84, 92, 60, 7, 6, chit, seed); sLimb(92, 60, 98, 30, 6, 5, chit, seed);
-        sLimb(98, 30, 86 - 14 * k, 14 + 26 * k, 5, 4, chit, seed);
-        sBall(82 - 16 * k, 16 + 30 * k, 4, 5, 0xFF1A1208, 0);
-    } else {
-        float sw = sinf(ph) * 3.f;
-        sLimb(64, 84, 90 + sw, 64, 7, 6, chit, seed); sLimb(90 + sw, 64, 98 + sw, 38, 6, 5, chit, seed);
-        sLimb(98 + sw, 38, 90 + sw, 18, 5, 4, chit, seed); sLimb(90 + sw, 18, 80 + sw, 13, 4, 3, chit, seed);
-        sBall(77 + sw, 14, 3, 4, 0xFF1A1208, 0);
-        sPix((int)(74 + sw), 16, tooth);
+    uint32_t wing = 0xFF8A8270, vein = 0xFF3A3428, chit = 0xFF4A3A20, gold = 0xFFE0B030, tooth = 0xFFF0E8D0;
+    /* "the sound of their wings was as the sound of chariots": jagged insect wings */
+    for (int s = -1; s <= 1; s += 2) {
+        float lit = s < 0 ? 1.1f : 0.88f;
+        sTri(64 + s * 8, 50, 64 + s * 60, 10 + flap, 64 + s * 44, 44, wing, lit);
+        sTri(64 + s * 8, 56, 64 + s * 58, 38 + flap * 0.6f, 64 + s * 30, 64, wing, lit * 0.85f);
+        sLimb(64 + s * 8, 50, 64 + s * 60, 10 + flap, 0.7f, 0.5f, vein, 0);
+        sLimb(64 + s * 8, 56, 64 + s * 58, 38 + flap * 0.6f, 0.6f, 0.5f, vein, 0);
     }
-    /* "the shapes of the locusts were like unto horses prepared unto battle" */
-    sLimb(50, 86, 48, 104 - la, 7, 5, L->hide, seed); sLimb(48, 104 - la, 48, 121 - la, 5, 4, L->hide, seed);
-    sBall(48, 123 - la, 6, 3, 0xFF141010, 0);
-    sLimb(78, 86, 80, 104 - ra, 7, 5, L->hide, seed); sLimb(80, 104 - ra, 80, 121 - ra, 5, 4, L->hide, seed);
-    sBall(80, 123 - ra, 6, 3, 0xFF141010, 0);
-    sBall(64, 78, 26, 18, L->hide, seed);
-    /* "they had breastplates, as it were breastplates of iron" */
-    sBall(64, 68, 22, 22, L->plate, seed + 1);
-    for (int r = 0; r < 3; r++) sLimb(46, 58 + r * 9, 82, 58 + r * 9, 0.8f, 0.8f, scaleRGB(L->plate, 0.5f), 0);
-    for (int r = 0; r < 4; r++) { sPix(49 + r * 10, 62, 0xFFE0E4EA); sPix(49 + r * 10, 71, 0xFFE0E4EA); }
-    /* "they had hair as the hair of women" */
-    sBall(64, 40, 19, 24, L->hair, seed + 2);
-    sLimb(48, 38, 42, 66, 6, 4, L->hair, seed + 2); sLimb(80, 38, 86, 66, 6, 4, L->hair, seed + 2);
-    /* "their faces were as the faces of men" */
-    sBall(64, 34, 12, 15, L->skin, seed + 3);
-    sBall(59, 31, 3, 2, 0xFF1A1010, 0); sBall(69, 31, 3, 2, 0xFF1A1010, 0);
-    sTri(56, 30, 62, 31, 57, 33, EM(0xFFFF5020), 1.f); sTri(72, 30, 66, 31, 71, 33, EM(0xFFFF5020), 1.f);   /* burning eyes */
-    sBall(64, 36, 1.5f, 2.5f, scaleRGB(L->skin, 0.7f), 0);
+    /* "tails like unto scorpions, and there were stings in their tails": segmented, ending in a hooked sting */
+    float tx[6], ty[6];
+    if (f == 4 || f == 5) { float k = f == 5 ? 1.f : 0.f; float px[6] = {64, 86, 98, 98, 88 - 10 * k, 78 - 14 * k}; float py[6] = {82, 72, 52, 30, 14 + 22 * k, 12 + 34 * k}; memcpy(tx, px, sizeof(tx)); memcpy(ty, py, sizeof(ty)); }
+    else { float sw = sinf(ph) * 3.f; float px[6] = {64, 86 + sw, 98 + sw, 98 + sw, 90 + sw, 80 + sw}; float py[6] = {82, 70, 50, 30, 16, 12}; memcpy(tx, px, sizeof(tx)); memcpy(ty, py, sizeof(ty)); }
+    for (int k = 0; k < 5; k++) {
+        float mx = (tx[k] + tx[k + 1]) / 2, my = (ty[k] + ty[k + 1]) / 2, w = 6.f - k;
+        sQuad(tx[k], ty[k], mx + w, my, tx[k + 1], ty[k + 1], mx - w, my, chit, k & 1 ? 1.15f : 0.9f);
+    }
+    sTri(tx[5] - 4, ty[5] - 2, tx[5] + 2, ty[5] + 3, tx[5] - 8, ty[5] + 6, 0xFF1A1208, 1.f);
+    sTri(tx[5] - 8, ty[5] + 6, tx[5] - 6, ty[5] + 4, tx[5] - 11, ty[5] + 9, tooth, 1.f);
+    /* "the shapes of the locusts were like unto horses prepared unto battle": angular legs and hooves */
+    for (int s = -1; s <= 1; s += 2) {
+        float up = s < 0 ? la : ra, hx = 64 + s * 15.f;
+        sQuad(hx - 6, 82, hx + 6, 82, hx + 3, 104 - up, hx - 3, 104 - up, L->hide, s < 0 ? 1.1f : 0.85f);
+        sQuad(hx - 3, 104 - up, hx + 3, 104 - up, hx + 2, 120 - up, hx - 2, 120 - up, L->hide, 0.95f);
+        sQuad(hx - 5, 119 - up, hx + 5, 119 - up, hx + 6, 125 - up, hx - 6, 125 - up, 0xFF141010, 1.f);
+    }
+    /* "they had breastplates, as it were breastplates of iron": overlapping plates with spiked shoulders */
+    sQuad(38, 56, 90, 56, 82, 92, 46, 92, L->plate, 0.95f);
+    sTri(38, 56, 64, 56, 64, 92, L->plate, 1.22f);
+    for (int r = 0; r < 3; r++) sQuad(42 + r * 2, 64 + r * 9, 86 - r * 2, 64 + r * 9, 84 - r * 2, 66 + r * 9, 44 + r * 2, 66 + r * 9, scaleRGB(L->plate, 0.5f), 1.f);
+    sTri(36, 58, 46, 54, 34, 44, L->plate, 1.25f); sTri(92, 58, 82, 54, 94, 44, L->plate, 0.9f);
+    /* "they had hair as the hair of women": long strands falling in points */
+    for (int k = -4; k <= 4; k++) {
+        float x = 64 + k * 4.5f, len = 40 + (abs(k) % 3) * 8;
+        sTri(x - 3, 20, x + 3, 20, x + k * 1.2f, 20 + len, L->hair, (k & 1) ? 1.05f : 0.85f);
+    }
+    /* "their faces were as the faces of men", with burning eyes */
+    sQuad(54, 22, 74, 22, 71, 40, 57, 40, L->skin, 1.f);
+    sTri(54, 22, 64, 22, 57, 40, L->skin, 1.18f);
+    sTri(57, 40, 71, 40, 64, 47, L->skin, 0.85f);
+    sTri(56, 29, 62, 31, 57, 33, EM(0xFFFF5020), 1.f); sTri(72, 29, 66, 31, 71, 33, EM(0xFFFF5020), 1.f);
     /* "their teeth were as the teeth of lions" */
-    sBall(64, 43, 6, 3.5f, 0xFF2A0A0A, 0);
-    for (int i = -4; i <= 4; i += 2) sPix(64 + i, 41, tooth);
-    sLimb(60, 41, 60, 46, 0.8f, 0.5f, tooth, 0); sLimb(68, 41, 68, 46, 0.8f, 0.5f, tooth, 0);
-    /* "on their heads were as it were crowns like gold" */
-    sBall(64, 20, 12, 4, gold, 0);
-    for (int i = -2; i <= 2; i++) sLimb(64 + i * 5, 19, 64 + i * 5, 12 - (i == 0 ? 3 : 0), 1.6f, 0.8f, gold, 0);
+    sQuad(58, 39, 70, 39, 68, 44, 60, 44, 0xFF2A0A0A, 1.f);
+    for (int k = 0; k < 4; k++) sTri(59 + k * 3, 39, 61 + k * 3, 39, 60 + k * 3, 43 + (k == 0 || k == 3 ? 3 : 0), tooth, 1.f);
+    /* "on their heads were as it were crowns like gold": a spiked crown */
+    sQuad(53, 18, 75, 18, 75, 23, 53, 23, gold, 1.f);
+    for (int k = 0; k < 5; k++) sTri(53 + k * 5, 18, 57 + k * 5, 18, 55 + k * 5, 8 - (k == 2 ? 4 : 0), gold, k & 1 ? 0.9f : 1.15f);
     sOutline(cur);
 }
 /* flat-shaded triangle and quad: hard angular planes instead of round blobs */
@@ -794,6 +804,49 @@ static void dragonFrame(int f)
     }
     sOutline(cur);
 }
+/* Dante's Lucifer (Inferno, Canto XXXIV): frozen to the mid-breast in the ice of Cocytus, three faces
+   (red in front, yellow-white on the right, black on the left) and six great wings "no feathers had they,
+   but as of a bat" */
+static void luciferFrame(int f)
+{
+    float flap = f < 4 ? sinf(f * PI_F / 2.f) * 6.f : -6.f;
+    uint32_t hide = 0xFF3A3038, wing = 0xFF2A2026, bone = 0xFF140E12, ice = 0xFFA8C8E0, iceD = 0xFF6E90B4;
+    for (int k = 2; k >= 0; k--)                                 /* six wings: three on each side */
+        for (int s = -1; s <= 1; s += 2) {
+            float lit = s < 0 ? 1.1f : 0.85f;
+            float Sx = 64 + s * 16, Sy = 40 + k * 8, Ex = 64 + s * (40 + k * 8), Ey = 4 + k * 12 + flap;
+            float F1x = 64 + s * 63, F1y = 26 + k * 14 + flap, F2x = 64 + s * (44 + k * 4), F2y = 62 + k * 8;
+            sTri(Sx, Sy, Ex, Ey, F1x, F1y, wing, lit);
+            sTri(Sx, Sy, F1x, F1y, F2x, F2y, wing, lit * 0.85f);
+            sLimb(Sx, Sy, Ex, Ey, 2.f, 1.2f, bone, 0);
+            sLimb(Ex, Ey, F1x, F1y, 1.f, 0.7f, bone, 0); sLimb(Ex, Ey, F2x, F2y, 1.f, 0.7f, bone, 0);
+        }
+    /* huge torso and arms */
+    sQuad(40, 34, 88, 34, 84, 96, 44, 96, hide, 1.f);
+    sTri(40, 34, 64, 34, 64, 96, hide, 1.2f);
+    sQuad(46, 40, 63, 40, 63, 54, 48, 52, hide, 1.3f); sQuad(65, 40, 82, 40, 80, 52, 65, 54, hide, 0.9f);
+    sLimb(40, 40, 24, 66, 7, 6, hide, 0); sLimb(88, 40, 104, 66, 7, 6, hide, 0);
+    sClaws(24, 66, -1.f, bone); sClaws(104, 66, 1.f, bone);
+    /* three faces on one head */
+    struct { float x, y; uint32_t c; } faces[3] = {{48, 26, 0xFFD8C890}, {80, 26, 0xFF201818}, {64, 22, 0xFFA82018}};
+    for (int k = 0; k < 3; k++) {
+        float x = faces[k].x, y = faces[k].y;
+        sQuad(x - 9, y - 8, x + 9, y - 8, x + 7, y + 8, x - 7, y + 8, faces[k].c, k == 2 ? 1.1f : 0.95f);
+        sTri(x - 7, y + 8, x + 7, y + 8, x, y + 14, faces[k].c, 0.85f);
+        sTri(x - 6, y - 3, x - 2, y - 2, x - 5, y, EM(0xFFFFE040), 1.f); sTri(x + 6, y - 3, x + 2, y - 2, x + 5, y, EM(0xFFFFE040), 1.f);
+        if (f == 4 || f == 5) sTri(x - 4, y + 6, x + 4, y + 6, x, y + 16 + (f == 5 ? 6 : 0), EM(0xFFC0E8FF), 1.f);   /* freezing breath */
+        else sQuad(x - 4, y + 6, x + 4, y + 6, x + 3, y + 9, x - 3, y + 9, 0xFF100808, 1.f);
+        sTri(x - 6, y - 8, x - 2, y - 8, x - 5, y - 15, 0xFFD8CCB0, 1.f); sTri(x + 6, y - 8, x + 2, y - 8, x + 5, y - 15, 0xFFD8CCB0, 1.f);
+    }
+    /* the ice of Cocytus up to his chest */
+    for (int x = 4; x < 124; x += 8) {
+        float h = 82.f + (float)(hash2(x, 3, 91) % 10);
+        sTri((float)x, 92.f, x + 8.f, 92.f, x + 4.f, h, ice, (x / 8) & 1 ? 1.1f : 0.9f);
+    }
+    sQuad(4, 90, 124, 90, 124, 127, 4, 127, ice, 1.f);
+    for (int k = 0; k < 7; k++) sLimb(10 + k * 16, 96, 18 + k * 16, 120, 0.6f, 0.6f, iceD, 0);
+    sOutline(cur);
+}
 static void buildSprites(void)
 {
     for (int i = 0; i < SP_COUNT; i++) spr[i] = (uint32_t *)calloc(SS * SS, 4);
@@ -824,6 +877,8 @@ static void buildSprites(void)
     cur = spr[SP_PU_GOLD]; powerFrame(0xFFFFD030, "$");
     for (int f = 0; f < 6; f++) { cur = spr[SP_DRAGON + f]; dragonFrame(f); }
     buildDeathFrames(SP_DRAGON);
+    for (int f = 0; f < 6; f++) { cur = spr[SP_LUCIFER + f]; luciferFrame(f); }
+    buildDeathFrames(SP_LUCIFER);
     cur = spr[SP_TORCH0]; torchFrame(0);
     cur = spr[SP_TORCH1]; torchFrame(1);
     for (int i = 0; i < SP_COUNT; i++) pixelArt(spr[i]);
@@ -1019,7 +1074,7 @@ static int reach[MH][MW];
 static int flow[MH][MW];
 
 static char cellC(int x, int y) { if (x < 0 || y < 0 || x >= MW || y >= MH) return '#'; return map[y][x]; }
-static int isFloorC(char c) { return c == '.' || c == 'S' || c == 'e'; }
+static int isFloorC(char c) { return c == '.' || c == 'S' || c == 'e' || c == '_' || c == '~' || c == ',' || c == '=' || c == '^' || c == '*'; }
 static int isOutsideC(char c) { return c == 'o' || c == 'Z'; }
 static int isWallC(char c) { return !(isFloorC(c) || isOutsideC(c)); }
 static int solidAt(int x, int y) { char c = cellC(x, y); return isWallC(c) && !(c == 'B' && boards[y][x] == 0); }
@@ -1027,6 +1082,190 @@ static int playerPass(int x, int y) { return isFloorC(cellC(x, y)); }
 static int zombiePass(int x, int y) { char c = cellC(x, y); return isFloorC(c) || isOutsideC(c) || (c == 'B' && boards[y][x] == 0); }
 static int zombiePath(int x, int y) { char c = cellC(x, y); return isFloorC(c) || isOutsideC(c) || c == 'B'; }
 
+/* ------------------------------------------------------------------ */
+/* Themes and the level generator (Bible books and Inferno circles)   */
+/* ------------------------------------------------------------------ */
+enum { HZ_NONE, HZ_CHASM, HZ_WIND, HZ_MUD, HZ_MARSH, HZ_FIRE, HZ_BLOOD, HZ_DITCH, HZ_ICE };
+typedef struct { const char *place; int wallTex, crateTex; uint32_t floorA, floorB, ceil; float amb[3]; } Theme;
+static const Theme THEMES[16] = {
+    {"THE WILDERNESS",         TX_STONE,   TX_CRATE,  0xFF6A5638, 0xFF5E4C30, 0xFF3A2E22, {0.60f, 0.48f, 0.36f}},
+    {"THE PROMISED LAND",      TX_BRICK,   TX_CRATE,  0xFF5A4A34, 0xFF50422E, 0xFF30261E, {0.55f, 0.45f, 0.38f}},
+    {"THE HOUSE OF PRAYER",    TX_PLASTER, TX_PILLAR, 0xFF5A5048, 0xFF4E463E, 0xFF34302C, {0.56f, 0.48f, 0.42f}},
+    {"BABYLON",                TX_BRICK,   TX_PILLAR, 0xFF5A4630, 0xFF4E3C28, 0xFF2E241A, {0.55f, 0.40f, 0.30f}},
+    {"GALILEE",                TX_WOOD,    TX_CRATE,  0xFF4E4232, 0xFF463A2C, 0xFF2E2620, {0.52f, 0.46f, 0.42f}},
+    {"ROME",                   TX_STONE,   TX_PILLAR, 0xFF56524A, 0xFF4C4840, 0xFF302E2A, {0.52f, 0.46f, 0.44f}},
+    {"PATMOS",                 TX_METAL,   TX_PILLAR, 0xFF3A3436, 0xFF322C2E, 0xFF221E20, {0.60f, 0.36f, 0.30f}},
+    {"LIMBO",                  TX_STONE,   TX_PILLAR, 0xFF4A4C48, 0xFF424440, 0xFF282A28, {0.42f, 0.46f, 0.44f}},
+    {"THE INFERNAL HURRICANE", TX_PLASTER, TX_PILLAR, 0xFF3E3448, 0xFF362C40, 0xFF201A28, {0.45f, 0.32f, 0.55f}},
+    {"THE ETERNAL RAIN",       TX_BRICK,   TX_CRATE,  0xFF3A3020, 0xFF32281A, 0xFF201810, {0.40f, 0.38f, 0.32f}},
+    {"THE WEIGHTS OF GREED",   TX_METAL,   TX_CRATE,  0xFF5A4A20, 0xFF4E401A, 0xFF2A2210, {0.62f, 0.50f, 0.24f}},
+    {"THE MARSH OF STYX",      TX_WOOD,    TX_CRATE,  0xFF2E3A2A, 0xFF283222, 0xFF182014, {0.32f, 0.42f, 0.30f}},
+    {"THE CITY OF DIS",        TX_STONE,   TX_PILLAR, 0xFF4A2E22, 0xFF40281E, 0xFF241410, {0.62f, 0.34f, 0.22f}},
+    {"THE RIVER OF BLOOD",     TX_BRICK,   TX_PILLAR, 0xFF4A2420, 0xFF401E1A, 0xFF240E0C, {0.66f, 0.28f, 0.24f}},
+    {"MALEBOLGE",              TX_METAL,   TX_PILLAR, 0xFF2E2A2C, 0xFF262224, 0xFF161214, {0.40f, 0.32f, 0.34f}},
+    {"COCYTUS",                TX_ICE,     TX_ICE,    0xFF8AA8C0, 0xFF7A98B0, 0xFF3A4A5A, {0.46f, 0.56f, 0.72f}},
+};
+static Theme curTheme;
+static int curHazard, pendingHazard, pendingTheme, pendingExit, bossCX = 20, bossCY = 20;
+static float curWind;
+
+static uint32_t gSeed;
+static int gRand(int n) { gSeed = gSeed * 1103515245u + 12345u; return (int)((gSeed >> 16) % (unsigned)(n > 0 ? n : 1)); }
+static int isSpecialC(char c) { return c && strchr("DBpacblTvhmXOS", c) != NULL; }
+/* a plain wall cell with floor on at least one side and nothing special next to it */
+static int wallFree(int x, int y)
+{
+    if (x < 1 || y < 1 || x >= MW - 1 || y >= MH - 1 || map[y][x] != 'W') return 0;
+    int fl = 0;
+    static const int d[4][2] = {{1,0},{-1,0},{0,1},{0,-1}};
+    for (int k = 0; k < 4; k++) if (isFloorC(map[y + d[k][1]][x + d[k][0]])) fl++;
+    if (!fl) return 0;
+    for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) if (isSpecialC(map[y + j][x + i])) return 0;
+    /* not a corner: walls must continue on both sides along one axis */
+    int horiz = map[y][x - 1] != 'o' && !isFloorC(map[y][x - 1]) && map[y][x + 1] != 'o' && !isFloorC(map[y][x + 1]);
+    int vert = map[y - 1][x] != 'o' && !isFloorC(map[y - 1][x]) && map[y + 1][x] != 'o' && !isFloorC(map[y + 1][x]);
+    return horiz || vert;
+}
+static int nearDoor(int x, int y)
+{
+    for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) if (map[y + j][x + i] == 'D') return 1;
+    return 0;
+}
+static void genMap(int seed, int hazard, int exitGate)
+{
+    gSeed = (uint32_t)seed * 2654435761u + 7u;
+    int nc = 2 + gRand(2), nr = 2 + gRand(2);
+    int X[4], Y[4];
+    X[0] = 5; X[nc] = 34; Y[0] = 5; Y[nr] = 34;
+    for (int i = 1; i < nc; i++) X[i] = 5 + 29 * i / nc + gRand(5) - 2;
+    for (int j = 1; j < nr; j++) Y[j] = 5 + 29 * j / nr + gRand(5) - 2;
+    int nRooms = nc * nr;
+    for (int j = 0; j < nr; j++) for (int i = 0; i < nc; i++)
+        for (int y = Y[j]; y <= Y[j + 1]; y++) for (int x = X[i]; x <= X[i + 1]; x++) {
+            int edge = x == X[i] || x == X[i + 1] || y == Y[j] || y == Y[j + 1];
+            if (edge) { if (!isFloorC(map[y][x])) map[y][x] = 'W'; } else map[y][x] = '.';
+        }
+    /* doors: a random spanning tree out from the first room, prices rising with depth */
+    int depth[9], conn[9];
+    for (int r = 0; r < 9; r++) { depth[r] = -1; conn[r] = 0; }
+    depth[0] = 0; conn[0] = 1;
+    static const int costs[4] = {750, 1000, 1250, 1500};
+    for (int n = 1; n < nRooms; n++) {
+        int ca[36], cb[36], k = 0;
+        for (int r = 0; r < nRooms; r++) if (conn[r]) {
+            int ri = r % nc, rj = r / nc;
+            if (ri + 1 < nc && !conn[r + 1]) { ca[k] = r; cb[k] = r + 1; k++; }
+            if (ri > 0 && !conn[r - 1]) { ca[k] = r; cb[k] = r - 1; k++; }
+            if (rj + 1 < nr && !conn[r + nc]) { ca[k] = r; cb[k] = r + nc; k++; }
+            if (rj > 0 && !conn[r - nc]) { ca[k] = r; cb[k] = r - nc; k++; }
+        }
+        if (!k) break;
+        int e = gRand(k), a = ca[e], b = cb[e];
+        int ai = a % nc, aj = a / nc, bi = b % nc, bj = b / nc, dx, dy;
+        if (aj == bj) { dx = X[ai > bi ? ai : bi]; dy = (Y[aj] + Y[aj + 1]) / 2 + gRand(3) - 1; }
+        else { dy = Y[aj > bj ? aj : bj]; dx = (X[ai] + X[ai + 1]) / 2 + gRand(3) - 1; }
+        depth[b] = depth[a] + 1; conn[b] = 1;
+        map[dy][dx] = 'D'; doorCostG[dy][dx] = costs[depth[b] - 1 > 3 ? 3 : depth[b] - 1];
+    }
+    /* starting room: the two players side by side */
+    int sx = (X[0] + X[1]) / 2, sy = (Y[0] + Y[1]) / 2;
+    map[sy][sx - 1] = 'S'; map[sy][sx + 1] = 'S';
+    /* windows on outside walls, each with a spawn point beyond */
+    for (int r = 0; r < nRooms; r++) {
+        int ri = r % nc, rj = r / nc;
+        for (int side = 0; side < 4; side++) {
+            int outer = (side == 0 && ri == 0) || (side == 1 && ri == nc - 1) || (side == 2 && rj == 0) || (side == 3 && rj == nr - 1);
+            if (!outer) continue;
+            int want = 1 + (gRand(3) == 0);
+            for (int w = 0, tries = 0; w < want && tries < 30; tries++) {
+                int x, y, ox = 0, oy = 0;
+                if (side < 2) { x = side == 0 ? X[ri] : X[ri + 1]; y = Y[rj] + 2 + gRand(Y[rj + 1] - Y[rj] - 3); ox = side == 0 ? -1 : 1; }
+                else { y = side == 2 ? Y[rj] : Y[rj + 1]; x = X[ri] + 2 + gRand(X[ri + 1] - X[ri] - 3); oy = side == 2 ? -1 : 1; }
+                if (!wallFree(x, y) || map[y + oy][x + ox] != 'o') continue;
+                map[y][x] = 'B'; boards[y][x] = 6;
+                int zx = x + ox * 3, zy = y + oy * 3;
+                if (map[zy][zx] != 'o') { zx = x + ox * 2; zy = y + oy * 2; }
+                if (map[zy][zx] == 'o') map[zy][zx] = 'Z';
+                w++;
+            }
+        }
+    }
+    /* rooms furthest from the start */
+    int far = 0;
+    for (int r = 0; r < nRooms; r++) if (depth[r] > depth[far]) far = r;
+    /* wall signs: weapons, the bench, the shelf and the fence switch */
+    static const char signs[] = "pacblTvhmX";
+    for (int s = 0; signs[s]; s++) {
+        int r = s == 0 ? 0 : (s == 1 ? (nRooms > 1 ? 1 + gRand(nRooms - 1) : 0) : gRand(nRooms));
+        int ri = r % nc, rj = r / nc;
+        for (int tries = 0; tries < 80; tries++) {
+            int side = gRand(4), x, y;
+            if (side < 2) { x = side == 0 ? X[ri] : X[ri + 1]; y = Y[rj] + 2 + gRand(Y[rj + 1] - Y[rj] - 3); }
+            else { y = side == 2 ? Y[rj] : Y[rj + 1]; x = X[ri] + 2 + gRand(X[ri + 1] - X[ri] - 3); }
+            if (wallFree(x, y)) { map[y][x] = signs[s]; break; }
+            if (tries == 79) r = gRand(nRooms), ri = r % nc, rj = r / nc, tries = 0;
+        }
+    }
+    /* the sealed gate out of this circle */
+    if (exitGate) {
+        int ri = far % nc, rj = far / nc, placed = 0;
+        for (int tries = 0; tries < 200 && !placed; tries++) {
+            int side = gRand(4), x, y;
+            if (side < 2) { x = side == 0 ? X[ri] : X[ri + 1]; y = Y[rj] + 2 + gRand(Y[rj + 1] - Y[rj] - 3); }
+            else { y = side == 2 ? Y[rj] : Y[rj + 1]; x = X[ri] + 2 + gRand(X[ri + 1] - X[ri] - 3); }
+            if (wallFree(x, y)) { map[y][x] = 'O'; placed = 1; }
+        }
+    }
+    bossCX = (X[far % nc] + X[far % nc + 1]) / 2; bossCY = (Y[far / nc] + Y[far / nc + 1]) / 2;
+    /* hazards: chasms and rivers to leap, mud, ice and fire underfoot (never in the first room) */
+    for (int r = 1; r < nRooms; r++) {
+        int ri = r % nc, rj = r / nc;
+        int x0 = X[ri] + 1, x1 = X[ri + 1] - 1, y0 = Y[rj] + 1, y1 = Y[rj + 1] - 1;
+        if (hazard == HZ_CHASM || hazard == HZ_WIND || hazard == HZ_BLOOD || hazard == HZ_DITCH) {
+            if ((hazard == HZ_CHASM || hazard == HZ_WIND) && gRand(3) == 0) continue;
+            int strips = hazard == HZ_DITCH ? 2 : 1, w = hazard == HZ_BLOOD ? 2 : 1;
+            char hc = hazard == HZ_BLOOD ? '~' : '_';
+            for (int s = 0; s < strips; s++) {
+                int vertical = gRand(2);
+                if (vertical && x1 - x0 < 6) vertical = 0;
+                if (!vertical && y1 - y0 < 6) vertical = 1;
+                if (vertical) {
+                    int sx0 = x0 + 2 + gRand(x1 - x0 - 3 - w);
+                    for (int x = sx0; x < sx0 + w; x++) for (int y = y0; y <= y1; y++) if (map[y][x] == '.' && !nearDoor(x, y)) map[y][x] = hc;
+                } else {
+                    int sy0 = y0 + 2 + gRand(y1 - y0 - 3 - w);
+                    for (int y = sy0; y < sy0 + w; y++) for (int x = x0; x <= x1; x++) if (map[y][x] == '.' && !nearDoor(x, y)) map[y][x] = hc;
+                }
+            }
+        } else if (hazard == HZ_MUD || hazard == HZ_MARSH || hazard == HZ_ICE) {
+            char hc = hazard == HZ_ICE ? '=' : ',';
+            int px0 = x0 + gRand(3), py0 = y0 + gRand(3), px1 = x1 - gRand(3), py1 = y1 - gRand(3);
+            for (int y = py0; y <= py1; y++) for (int x = px0; x <= px1; x++) if (map[y][x] == '.') map[y][x] = hc;
+        } else if (hazard == HZ_FIRE) {
+            for (int t = 0; t < 3; t++) {             /* burning tombs */
+                int tx = x0 + 1 + gRand(x1 - x0 - 2), ty = y0 + 1 + gRand(y1 - y0 - 2);
+                for (int y = ty; y <= ty + 1 && y <= y1; y++) for (int x = tx; x <= tx + 2 && x <= x1; x++) if (map[y][x] == '.' && !nearDoor(x, y)) map[y][x] = '^';
+            }
+        }
+    }
+    if (hazard == HZ_ICE)       /* Lucifer's chamber is all ice */
+        for (int y = bossCY - 3; y <= bossCY + 3; y++) for (int x = bossCX - 3; x <= bossCX + 3; x++) if (map[y][x] == '.' || map[y][x] == '_') map[y][x] = '=';
+    /* electric fence and a few crates */
+    {
+        int r = nRooms > 1 ? 1 + gRand(nRooms - 1) : 0, ri = r % nc, rj = r / nc;
+        int fx = X[ri] + 2 + gRand(X[ri + 1] - X[ri] - 6 > 1 ? X[ri + 1] - X[ri] - 6 : 1), fy = Y[rj] + 2 + gRand(Y[rj + 1] - Y[rj] - 4 > 1 ? Y[rj + 1] - Y[rj] - 4 : 1);
+        for (int y = fy; y < fy + 2; y++) for (int x = fx; x < fx + 4; x++) if (map[y][x] == '.' && !nearDoor(x, y)) map[y][x] = 'e';
+    }
+    for (int r = 0; r < nRooms; r++) {
+        int ri = r % nc, rj = r / nc;
+        for (int tries = 0; tries < 20; tries++) {
+            int x = X[ri] + 2 + gRand(X[ri + 1] - X[ri] - 3), y = Y[rj] + 2 + gRand(Y[rj + 1] - Y[rj] - 3);
+            int ok = map[y][x] == '.';
+            for (int j = -1; j <= 1 && ok; j++) for (int i = -1; i <= 1 && ok; i++) if (map[y + j][x + i] != '.' && map[y + j][x + i] != 'C') ok = 0;
+            if (ok && !(r == 0 && abs(y - sy) < 3)) { map[y][x] = 'C'; break; }
+        }
+    }
+}
 static int trapOn;           /* fence switched on */
 static float trapT, trapCd;
 static int trapOwner;
@@ -1034,8 +1273,9 @@ static int texFor(int x, int y)
 {
     char c = cellC(x, y);
     switch (c) {
-        case 'W': return MAPS[curMap].wallTex;
-        case 'C': return MAPS[curMap].crateTex;
+        case 'W': return curTheme.wallTex;
+        case 'C': return curTheme.crateTex;
+        case 'O': return TX_GATE;
         case 'D': { int k = doorCostG[y][x]; return k >= 1500 ? TX_DOOR1500 : k >= 1250 ? TX_DOOR1250 : k >= 1000 ? TX_DOOR1000 : TX_DOOR750; }
         case 'B': return TX_WIN0 + boards[y][x];
         case 'p': return TX_BUY_P; case 'a': return TX_BUY_A; case 'c': return TX_BUY_C; case 'b': return TX_BUY_B; case 'l': return TX_BUY_L;
@@ -1051,6 +1291,14 @@ static void buildMap(int m)
         map[y][x] = (x == 0 || y == 0 || x == MW - 1 || y == MH - 1) ? '#' : 'o';
         boards[y][x] = 0; tearT[y][x] = 0; doorCostG[y][x] = 0;
     }
+    if (m >= 100) {                                  /* a generated level: a Bible book or an Inferno circle */
+        curTheme = THEMES[pendingTheme]; curHazard = pendingHazard;
+        genMap(m, pendingHazard, pendingExit);
+        return;
+    }
+    curTheme.place = MAPS[m].name; curTheme.wallTex = MAPS[m].wallTex; curTheme.crateTex = MAPS[m].crateTex;
+    curTheme.floorA = MAPS[m].floorA; curTheme.floorB = MAPS[m].floorB; curTheme.ceil = MAPS[m].ceil;
+    curTheme.amb[0] = 0.52f; curTheme.amb[1] = 0.43f; curTheme.amb[2] = 0.42f; curHazard = HZ_NONE;
     for (const MCmd *c = MAPS[m].cmds; c->op != 'Z'; c++) {
         int x = c->x, y = c->y;
         switch (c->op) {
@@ -1174,7 +1422,7 @@ static int buyWeapon(char c) { return c == 'p' ? W_PISTOL : c == 'a' ? W_SHOTGUN
 enum { ST_UP, ST_DOWN, ST_DEAD };
 typedef struct {
     int on, state;
-    float x, y, ang, hp, maxHp, regenDelay, bob, recoil, flash, fireCd, reloadT, reloadLen, downT, reviveT, useT, hurtFlash, shake, hitT, killT;
+    float x, y, ang, hp, maxHp, regenDelay, bob, recoil, flash, fireCd, reloadT, reloadLen, downT, reviveT, useT, hurtFlash, shake, hitT, killT, z, vz, safeX, safeY, ivx, ivy;
     int points, weap[3], lvl[3], mag[3], res[3], cur, slots, maxSlots, kills, vest, hands, revives, swingCount;
     char msg[48]; float msgT;
 } Player;
@@ -1199,65 +1447,239 @@ static float flowTimer;
 #define WIN_WAVE 99
 static void placeTorches(void);
 static int moveOk(float x, float y, int (*pass)(int, int), float r);
-/* ---- Campaign: seven chapters from scripture (quotations from the King James Version, public domain) ---- */
-#define NCHAP 7
+/* ---- Campaign: the 66 books of the Bible, one level each (King James Version quotations, public domain) ---- */
 typedef struct {
     const char *title, *ref, *quote[4], *goal, *win;
-    int map, waves, startWave, bossEvery, dragon;
+    int map, waves, startWave, bossEvery, dragon;      /* dragon: 1 the great red Dragon, 2 Lucifer */
     float crawl, bloat;
+    int hazard, theme, exitGate;
+    float wind;
 } Chapter;
-static const Chapter CHAP[NCHAP] = {
-    {"THE BOTTOMLESS PIT", "REVELATION 9:1-3",
-     {"AND THE FIFTH ANGEL SOUNDED, AND I SAW A STAR FALL FROM HEAVEN",
-      "UNTO THE EARTH: AND TO HIM WAS GIVEN THE KEY OF THE BOTTOMLESS PIT.",
-      "AND THERE CAME OUT OF THE SMOKE LOCUSTS UPON THE EARTH.", NULL},
-     "HOLD ROTWOOD FARM. SURVIVE 5 WAVES OF LOCUSTS.",
-     "THE LOCUSTS FALL BACK INTO THE SMOKE OF THE PIT.",
-     0, 5, 1, 0, 0, 0.f, 0.f},
-    {"UNCLEAN SPIRITS", "REVELATION 16:13-14",
-     {"AND I SAW THREE UNCLEAN SPIRITS LIKE FROGS COME OUT OF THE MOUTH",
-      "OF THE DRAGON... FOR THEY ARE THE SPIRITS OF DEVILS, WORKING MIRACLES.", NULL, NULL},
-     "HOLD MILLBROOK MILL. SURVIVE 6 WAVES. THE FROG SPIRITS COME EARLY.",
-     "THE UNCLEAN SPIRITS ARE SILENCED.",
-     2, 6, 4, 0, 0, 0.35f, 0.f},
-    {"THE WATCHMAN", "EZEKIEL 33:6",
-     {"BUT IF THE WATCHMAN SEE THE SWORD COME, AND BLOW NOT THE TRUMPET,",
-      "AND THE PEOPLE BE NOT WARNED... HIS BLOOD WILL I REQUIRE AT THE",
-      "WATCHMAN'S HAND.", NULL},
-     "KEEP WATCH AT GULLWATCH LIGHT. SURVIVE 7 WAVES.",
-     "THE LIGHT STILL BURNS. THE WATCH WAS KEPT.",
-     1, 7, 7, 0, 0, 0.10f, 0.05f},
-    {"WAR IN HEAVEN", "REVELATION 12:7-9",
-     {"AND THERE WAS WAR IN HEAVEN: MICHAEL AND HIS ANGELS FOUGHT AGAINST",
-      "THE DRAGON; AND THE DRAGON FOUGHT AND HIS ANGELS, AND PREVAILED NOT...",
-      "AND HIS ANGELS WERE CAST OUT WITH HIM.", NULL},
-     "CAST DOWN THE FALLEN ANGELS AT HOLLOW CHAPEL. SURVIVE 8 WAVES.",
-     "THE FALLEN ARE CAST OUT. THEIR PLACE IS FOUND NO MORE.",
-     3, 8, 10, 0, 0, 0.05f, 0.30f},
-    {"THE BEAST FROM THE SEA", "REVELATION 13:1",
-     {"AND I STOOD UPON THE SAND OF THE SEA, AND SAW A BEAST RISE UP OUT",
-      "OF THE SEA, HAVING SEVEN HEADS AND TEN HORNS, AND UPON HIS HORNS",
-      "TEN CROWNS.", NULL},
-     "HOLD IRONVALE DEPOT. SURVIVE 9 WAVES. A BEAST RISES EVERY THIRD WAVE.",
-     "THE BEASTS LIE SLAIN UPON THE TRACKS.",
-     4, 9, 13, 3, 0, 0.08f, 0.08f},
-    {"ARMAGEDDON", "REVELATION 16:16",
-     {"AND HE GATHERED THEM TOGETHER INTO A PLACE CALLED IN THE HEBREW",
-      "TONGUE ARMAGEDDON.", NULL, NULL},
-     "EVERY DEMON COMES AT ONCE. SURVIVE 10 WAVES AT ROTWOOD FARM.",
-     "THE HOST OF THE ABYSS IS BROKEN.",
-     0, 10, 17, 5, 0, 0.15f, 0.15f},
-    {"THE DRAGON BOUND", "REVELATION 12:3 AND 20:2",
-     {"BEHOLD A GREAT RED DRAGON, HAVING SEVEN HEADS AND TEN HORNS, AND",
-      "SEVEN CROWNS UPON HIS HEADS... AND HE LAID HOLD ON THE DRAGON, THAT",
-      "OLD SERPENT, WHICH IS THE DEVIL, AND SATAN, AND BOUND HIM A",
-      "THOUSAND YEARS."},
-     "SURVIVE 6 WAVES AT HOLLOW CHAPEL, THEN SLAY THE GREAT RED DRAGON.",
-     "THE DRAGON IS BOUND.",
-     3, 6, 22, 3, 1, 0.12f, 0.12f},
+#define NBOOKS 66
+typedef struct { const char *name, *ref, *q[3]; } BookDef;
+static const BookDef BOOKDEF[NBOOKS] = {
+    {"GENESIS", "GENESIS 1:1", {"IN THE BEGINNING GOD CREATED THE HEAVEN AND THE EARTH.", NULL, NULL}},
+    {"EXODUS", "EXODUS 15:3", {"THE LORD IS A MAN OF WAR: THE LORD IS HIS NAME.", NULL, NULL}},
+    {"LEVITICUS", "LEVITICUS 19:18", {"...THOU SHALT LOVE THY NEIGHBOUR AS THYSELF: I AM THE LORD.", NULL, NULL}},
+    {"NUMBERS", "NUMBERS 6:24", {"THE LORD BLESS THEE, AND KEEP THEE:", NULL, NULL}},
+    {"DEUTERONOMY", "DEUTERONOMY 31:6", {"BE STRONG AND OF A GOOD COURAGE, FEAR NOT, NOR BE AFRAID OF THEM:",
+        "FOR THE LORD THY GOD, HE IT IS THAT DOTH GO WITH THEE;", NULL}},
+    {"JOSHUA", "JOSHUA 1:9", {"HAVE NOT I COMMANDED THEE? BE STRONG AND OF A GOOD COURAGE; BE NOT",
+        "AFRAID, NEITHER BE THOU DISMAYED: FOR THE LORD THY GOD IS WITH THEE", "WHITHERSOEVER THOU GOEST."}},
+    {"JUDGES", "JUDGES 15:16", {"...WITH THE JAWBONE OF AN ASS, HEAPS UPON HEAPS, WITH THE JAW OF AN",
+        "ASS HAVE I SLAIN A THOUSAND MEN.", NULL}},
+    {"RUTH", "RUTH 1:16", {"...WHITHER THOU GOEST, I WILL GO; AND WHERE THOU LODGEST, I WILL LODGE:", NULL, NULL}},
+    {"1 SAMUEL", "1 SAMUEL 17:47", {"...FOR THE BATTLE IS THE LORD'S, AND HE WILL GIVE YOU INTO OUR HANDS.", NULL, NULL}},
+    {"2 SAMUEL", "2 SAMUEL 22:2", {"THE LORD IS MY ROCK, AND MY FORTRESS, AND MY DELIVERER;", NULL, NULL}},
+    {"1 KINGS", "1 KINGS 18:38", {"THEN THE FIRE OF THE LORD FELL, AND CONSUMED THE BURNT SACRIFICE,", NULL, NULL}},
+    {"2 KINGS", "2 KINGS 6:16", {"FEAR NOT: FOR THEY THAT BE WITH US ARE MORE THAN THEY THAT BE WITH THEM.", NULL, NULL}},
+    {"1 CHRONICLES", "1 CHRONICLES 16:11", {"SEEK THE LORD AND HIS STRENGTH, SEEK HIS FACE CONTINUALLY.", NULL, NULL}},
+    {"2 CHRONICLES", "2 CHRONICLES 20:15", {"...BE NOT AFRAID NOR DISMAYED BY REASON OF THIS GREAT MULTITUDE;",
+        "FOR THE BATTLE IS NOT YOURS, BUT GOD'S.", NULL}},
+    {"EZRA", "EZRA 10:4", {"ARISE; FOR THIS MATTER BELONGETH UNTO THEE: WE ALSO WILL BE WITH THEE:",
+        "BE OF GOOD COURAGE, AND DO IT.", NULL}},
+    {"NEHEMIAH", "NEHEMIAH 4:14", {"...BE NOT YE AFRAID OF THEM: REMEMBER THE LORD, WHICH IS GREAT AND",
+        "TERRIBLE, AND FIGHT...", NULL}},
+    {"ESTHER", "ESTHER 4:14", {"...AND WHO KNOWETH WHETHER THOU ART COME TO THE KINGDOM FOR SUCH",
+        "A TIME AS THIS?", NULL}},
+    {"JOB", "JOB 19:25", {"FOR I KNOW THAT MY REDEEMER LIVETH,", NULL, NULL}},
+    {"PSALMS", "PSALM 23:4", {"YEA, THOUGH I WALK THROUGH THE VALLEY OF THE SHADOW OF DEATH, I WILL",
+        "FEAR NO EVIL: FOR THOU ART WITH ME;", NULL}},
+    {"PROVERBS", "PROVERBS 18:10", {"THE NAME OF THE LORD IS A STRONG TOWER: THE RIGHTEOUS RUNNETH INTO IT,",
+        "AND IS SAFE.", NULL}},
+    {"ECCLESIASTES", "ECCLESIASTES 3:8", {"A TIME TO LOVE, AND A TIME TO HATE; A TIME OF WAR, AND A TIME OF PEACE.", NULL, NULL}},
+    {"SONG OF SOLOMON", "SONG OF SOLOMON 8:6", {"...FOR LOVE IS STRONG AS DEATH;", NULL, NULL}},
+    {"ISAIAH", "ISAIAH 40:31", {"BUT THEY THAT WAIT UPON THE LORD SHALL RENEW THEIR STRENGTH; THEY",
+        "SHALL MOUNT UP WITH WINGS AS EAGLES;", NULL}},
+    {"JEREMIAH", "JEREMIAH 29:11", {"FOR I KNOW THE THOUGHTS THAT I THINK TOWARD YOU, SAITH THE LORD,",
+        "THOUGHTS OF PEACE, AND NOT OF EVIL,", NULL}},
+    {"LAMENTATIONS", "LAMENTATIONS 3:22-23", {"IT IS OF THE LORD'S MERCIES THAT WE ARE NOT CONSUMED, BECAUSE HIS",
+        "COMPASSIONS FAIL NOT. THEY ARE NEW EVERY MORNING:", NULL}},
+    {"EZEKIEL", "EZEKIEL 33:6", {"BUT IF THE WATCHMAN SEE THE SWORD COME, AND BLOW NOT THE TRUMPET,",
+        "AND THE PEOPLE BE NOT WARNED... HIS BLOOD WILL I REQUIRE AT THE", "WATCHMAN'S HAND."}},
+    {"DANIEL", "DANIEL 6:22", {"MY GOD HATH SENT HIS ANGEL, AND HATH SHUT THE LIONS' MOUTHS,", NULL, NULL}},
+    {"HOSEA", "HOSEA 6:1", {"COME, AND LET US RETURN UNTO THE LORD: FOR HE HATH TORN, AND HE WILL",
+        "HEAL US;", NULL}},
+    {"JOEL", "JOEL 2:28", {"...I WILL POUR OUT MY SPIRIT UPON ALL FLESH;", NULL, NULL}},
+    {"AMOS", "AMOS 5:24", {"BUT LET JUDGMENT RUN DOWN AS WATERS, AND RIGHTEOUSNESS AS A MIGHTY STREAM.", NULL, NULL}},
+    {"OBADIAH", "OBADIAH 1:4", {"THOUGH THOU EXALT THYSELF AS THE EAGLE... THENCE WILL I BRING THEE",
+        "DOWN, SAITH THE LORD.", NULL}},
+    {"JONAH", "JONAH 2:2", {"...OUT OF THE BELLY OF HELL CRIED I, AND THOU HEARDEST MY VOICE.", NULL, NULL}},
+    {"MICAH", "MICAH 6:8", {"...WHAT DOTH THE LORD REQUIRE OF THEE, BUT TO DO JUSTLY, AND TO LOVE",
+        "MERCY, AND TO WALK HUMBLY WITH THY GOD?", NULL}},
+    {"NAHUM", "NAHUM 1:7", {"THE LORD IS GOOD, A STRONG HOLD IN THE DAY OF TROUBLE;", NULL, NULL}},
+    {"HABAKKUK", "HABAKKUK 3:19", {"THE LORD GOD IS MY STRENGTH, AND HE WILL MAKE MY FEET LIKE HINDS' FEET,", NULL, NULL}},
+    {"ZEPHANIAH", "ZEPHANIAH 3:17", {"THE LORD THY GOD IN THE MIDST OF THEE IS MIGHTY; HE WILL SAVE,", NULL, NULL}},
+    {"HAGGAI", "HAGGAI 2:4", {"...BE STRONG, ALL YE PEOPLE OF THE LAND, SAITH THE LORD, AND WORK:",
+        "FOR I AM WITH YOU,", NULL}},
+    {"ZECHARIAH", "ZECHARIAH 4:6", {"...NOT BY MIGHT, NOR BY POWER, BUT BY MY SPIRIT, SAITH THE LORD OF HOSTS.", NULL, NULL}},
+    {"MALACHI", "MALACHI 4:2", {"BUT UNTO YOU THAT FEAR MY NAME SHALL THE SUN OF RIGHTEOUSNESS ARISE",
+        "WITH HEALING IN HIS WINGS;", NULL}},
+    {"MATTHEW", "MATTHEW 16:18", {"...UPON THIS ROCK I WILL BUILD MY CHURCH; AND THE GATES OF HELL SHALL",
+        "NOT PREVAIL AGAINST IT.", NULL}},
+    {"MARK", "MARK 5:9", {"...MY NAME IS LEGION: FOR WE ARE MANY.", NULL, NULL}},
+    {"LUKE", "LUKE 10:18", {"...I BEHELD SATAN AS LIGHTNING FALL FROM HEAVEN.", NULL, NULL}},
+    {"JOHN", "JOHN 1:5", {"AND THE LIGHT SHINETH IN DARKNESS; AND THE DARKNESS COMPREHENDED IT NOT.", NULL, NULL}},
+    {"ACTS", "ACTS 16:18", {"...I COMMAND THEE IN THE NAME OF JESUS CHRIST TO COME OUT OF HER.",
+        "AND HE CAME OUT THE SAME HOUR.", NULL}},
+    {"ROMANS", "ROMANS 8:31", {"...IF GOD BE FOR US, WHO CAN BE AGAINST US?", NULL, NULL}},
+    {"1 CORINTHIANS", "1 CORINTHIANS 15:55", {"O DEATH, WHERE IS THY STING? O GRAVE, WHERE IS THY VICTORY?", NULL, NULL}},
+    {"2 CORINTHIANS", "2 CORINTHIANS 10:4", {"(FOR THE WEAPONS OF OUR WARFARE ARE NOT CARNAL, BUT MIGHTY THROUGH",
+        "GOD TO THE PULLING DOWN OF STRONG HOLDS;)", NULL}},
+    {"GALATIANS", "GALATIANS 6:9", {"AND LET US NOT BE WEARY IN WELL DOING: FOR IN DUE SEASON WE SHALL",
+        "REAP, IF WE FAINT NOT.", NULL}},
+    {"EPHESIANS", "EPHESIANS 6:11", {"PUT ON THE WHOLE ARMOUR OF GOD, THAT YE MAY BE ABLE TO STAND AGAINST",
+        "THE WILES OF THE DEVIL.", NULL}},
+    {"PHILIPPIANS", "PHILIPPIANS 4:13", {"I CAN DO ALL THINGS THROUGH CHRIST WHICH STRENGTHENETH ME.", NULL, NULL}},
+    {"COLOSSIANS", "COLOSSIANS 2:15", {"AND HAVING SPOILED PRINCIPALITIES AND POWERS, HE MADE A SHEW OF THEM",
+        "OPENLY, TRIUMPHING OVER THEM IN IT.", NULL}},
+    {"1 THESSALONIANS", "1 THESSALONIANS 5:8", {"...PUTTING ON THE BREASTPLATE OF FAITH AND LOVE; AND FOR AN HELMET,",
+        "THE HOPE OF SALVATION.", NULL}},
+    {"2 THESSALONIANS", "2 THESSALONIANS 3:3", {"BUT THE LORD IS FAITHFUL, WHO SHALL STABLISH YOU, AND KEEP YOU FROM EVIL.", NULL, NULL}},
+    {"1 TIMOTHY", "1 TIMOTHY 6:12", {"FIGHT THE GOOD FIGHT OF FAITH, LAY HOLD ON ETERNAL LIFE,", NULL, NULL}},
+    {"2 TIMOTHY", "2 TIMOTHY 4:7", {"I HAVE FOUGHT A GOOD FIGHT, I HAVE FINISHED MY COURSE, I HAVE KEPT THE FAITH:", NULL, NULL}},
+    {"TITUS", "TITUS 2:11", {"FOR THE GRACE OF GOD THAT BRINGETH SALVATION HATH APPEARED TO ALL MEN,", NULL, NULL}},
+    {"PHILEMON", "PHILEMON 1:3", {"GRACE TO YOU, AND PEACE, FROM GOD OUR FATHER AND THE LORD JESUS CHRIST.", NULL, NULL}},
+    {"HEBREWS", "HEBREWS 4:12", {"FOR THE WORD OF GOD IS QUICK, AND POWERFUL, AND SHARPER THAN ANY",
+        "TWOEDGED SWORD,", NULL}},
+    {"JAMES", "JAMES 4:7", {"SUBMIT YOURSELVES THEREFORE TO GOD. RESIST THE DEVIL, AND HE WILL FLEE",
+        "FROM YOU.", NULL}},
+    {"1 PETER", "1 PETER 5:8", {"BE SOBER, BE VIGILANT; BECAUSE YOUR ADVERSARY THE DEVIL, AS A ROARING",
+        "LION, WALKETH ABOUT, SEEKING WHOM HE MAY DEVOUR:", NULL}},
+    {"2 PETER", "2 PETER 2:4", {"FOR IF GOD SPARED NOT THE ANGELS THAT SINNED, BUT CAST THEM DOWN TO HELL,", NULL, NULL}},
+    {"1 JOHN", "1 JOHN 4:4", {"...GREATER IS HE THAT IS IN YOU, THAN HE THAT IS IN THE WORLD.", NULL, NULL}},
+    {"2 JOHN", "2 JOHN 1:3", {"GRACE BE WITH YOU, MERCY, AND PEACE, FROM GOD THE FATHER,", NULL, NULL}},
+    {"3 JOHN", "3 JOHN 1:11", {"BELOVED, FOLLOW NOT THAT WHICH IS EVIL, BUT THAT WHICH IS GOOD.", NULL, NULL}},
+    {"JUDE", "JUDE 1:9", {"YET MICHAEL THE ARCHANGEL, WHEN CONTENDING WITH THE DEVIL... SAID,",
+        "THE LORD REBUKE THEE.", NULL}},
+    {"REVELATION", "REVELATION 12:3 AND 20:2", {"BEHOLD A GREAT RED DRAGON, HAVING SEVEN HEADS AND TEN HORNS, AND SEVEN",
+        "CROWNS UPON HIS HEADS... AND HE LAID HOLD ON THE DRAGON, THAT OLD", "SERPENT, WHICH IS THE DEVIL, AND SATAN, AND BOUND HIM A THOUSAND YEARS."}},
 };
-static int campaign, curChap, chapUnlocked = 1, chapSel, dragonPending;
-static int chapWave(void) { return campaign ? wave - (CHAP[curChap].startWave - 1) : wave; }
+static Chapter BOOKS[NBOOKS];
+static char bookGoal[NBOOKS][64];
+static int bookSection(int i)
+{
+    return i < 5 ? 0 : i < 17 ? 1 : i < 22 ? 2 : i < 39 ? 3 : i < 43 ? 4 : i < 65 ? 5 : 6;
+}
+static void buildBooks(void)
+{
+    for (int i = 0; i < NBOOKS; i++) {
+        Chapter *C = &BOOKS[i];
+        memset(C, 0, sizeof(*C));
+        C->title = BOOKDEF[i].name; C->ref = BOOKDEF[i].ref;
+        for (int k = 0; k < 3; k++) C->quote[k] = BOOKDEF[i].q[k];
+        C->waves = i == NBOOKS - 1 ? 4 : 3;
+        C->startWave = 1 + i;
+        C->map = 1000 + i * 7;
+        C->theme = bookSection(i);
+        C->bossEvery = (i % 6 == 5) ? 3 : 0;                 /* every sixth book a Beast rises */
+        C->dragon = i == NBOOKS - 1;
+        C->bloat = i == 40 ? 0.35f : 0.f;                    /* Mark: "we are many" */
+        C->crawl = 0.f;
+        if (C->dragon) snprintf(bookGoal[i], 64, "SURVIVE %d WAVES, THEN SLAY THE GREAT RED DRAGON.", C->waves);
+        else snprintf(bookGoal[i], 64, "SURVIVE %d WAVES%s", C->waves, C->bossEvery ? ". A BEAST RISES ON THE LAST." : ".");
+        C->goal = bookGoal[i];
+        C->win = "THE WORD OF THE LORD ENDURETH FOR EVER.  (1 PETER 1:25)";
+    }
+}
+/* ---- Inferno: Dante's nine circles (Longfellow's 1867 translation, public domain) ---- */
+#define NCIRCLES 9
+static const Chapter INF[NCIRCLES] = {
+    {"CIRCLE I: LIMBO", "INFERNO, CANTOS III AND IV",
+     {"ALL HOPE ABANDON, YE WHO ENTER IN!", "...WITHOUT HOPE WE LIVE ON IN DESIRE.", NULL, NULL},
+     "SURVIVE 10 WAVES, THEN FIND THE WAY DOWN. LEAP THE PITS (JUMP).", "YOU DESCEND INTO THE SECOND CIRCLE.",
+     2000, 10, 1, 5, 0, 0.f, 0.f, HZ_CHASM, 7, 1, 0.f},
+    {"CIRCLE II: LUST", "INFERNO, CANTO V",
+     {"THE INFERNAL HURRICANE THAT NEVER RESTS", "HURTLES THE SPIRITS ONWARD IN ITS RAPINE;", NULL, NULL},
+     "SURVIVE 10 WAVES IN THE STORM THAT NEVER RESTS, THEN DESCEND.", "THE WINDS FALL SILENT BEHIND YOU.",
+     2011, 10, 6, 5, 0, 0.05f, 0.f, HZ_WIND, 8, 1, 1.3f},
+    {"CIRCLE III: GLUTTONY", "INFERNO, CANTO VI",
+     {"I AM IN THE THIRD CIRCLE, OF THE RAIN", "ETERNAL, MALEDICT, AND COLD, AND HEAVY;", NULL, NULL},
+     "SURVIVE 10 WAVES. THE FOUL MIRE SLOWS YOU. THEN DESCEND.", "YOU CLIMB FREE OF THE MIRE.",
+     2022, 10, 11, 5, 0, 0.25f, 0.f, HZ_MUD, 9, 1, 0.f},
+    {"CIRCLE IV: GREED", "INFERNO, CANTO VII",
+     {"ILL GIVING AND ILL KEEPING THE FAIR WORLD", "HAVE TA'EN FROM THEM, AND PLACED THEM IN THIS SCUFFLE;", NULL, NULL},
+     "SURVIVE 10 WAVES OVER THE CHASMS, THEN DESCEND.", "THE WEIGHTS ROLL ON WITHOUT YOU.",
+     2033, 10, 16, 5, 0, 0.1f, 0.1f, HZ_CHASM, 10, 1, 0.f},
+    {"CIRCLE V: WRATH", "INFERNO, CANTO VII",
+     {"THE WATER WAS MORE SOMBRE FAR THAN PERSE;", NULL, NULL, NULL},
+     "SURVIVE 10 WAVES IN THE MARSH OF STYX, THEN DESCEND.", "YOU CROSS THE STYX.",
+     2044, 10, 21, 5, 0, 0.15f, 0.1f, HZ_MARSH, 11, 1, 0.f},
+    {"CIRCLE VI: HERESY", "INFERNO, CANTO IX",
+     {"FOR FLAMES BETWEEN THE SEPULCHRES WERE SCATTERED,", "BY WHICH THEY SO INTENSELY HEATED WERE,", NULL, NULL},
+     "SURVIVE 10 WAVES AMONG THE BURNING TOMBS, THEN DESCEND.", "THE CITY OF DIS IS BEHIND YOU.",
+     2055, 10, 26, 5, 0, 0.1f, 0.25f, HZ_FIRE, 12, 1, 0.f},
+    {"CIRCLE VII: VIOLENCE", "INFERNO, CANTO XII",
+     {"BUT FIX THINE EYES BELOW; FOR DRAWETH NEAR", "THE RIVER OF BLOOD, WITHIN WHICH BOILING IS", NULL, NULL},
+     "SURVIVE 10 WAVES. LEAP THE RIVER OF BOILING BLOOD. THEN DESCEND.", "YOU LEAVE THE RIVER OF BLOOD.",
+     2066, 10, 31, 5, 0, 0.15f, 0.15f, HZ_BLOOD, 13, 1, 0.f},
+    {"CIRCLE VIII: FRAUD", "INFERNO, CANTO XVIII",
+     {"THERE IS A PLACE IN HELL CALLED MALEBOLGE,", NULL, NULL, NULL},
+     "SURVIVE 10 WAVES. LEAP THE DITCHES OF MALEBOLGE. THEN DESCEND.", "THE LAST CIRCLE WAITS BELOW.",
+     2077, 10, 36, 5, 0, 0.2f, 0.2f, HZ_DITCH, 14, 1, 0.f},
+    {"CIRCLE IX: TREACHERY", "INFERNO, CANTO XXXIV",
+     {"THE EMPEROR OF THE KINGDOM DOLOROUS", "FROM HIS MID-BREAST FORTH ISSUED FROM THE ICE;", NULL, NULL},
+     "SURVIVE 10 WAVES ON THE ICE, DEFEAT LUCIFER, AND ESCAPE.", "YOU CLIMB PAST LUCIFER AND OUT OF HELL.",
+     2088, 10, 41, 5, 2, 0.2f, 0.2f, HZ_ICE, 15, 1, 0.f},
+};
+static const Chapter *chapTab = BOOKS;
+static int chapCount = NBOOKS;
+static int campaign, curChap, chapSel, dragonPending, gateOpen, escaped, carryValid;
+static int unlockedArr[2] = {1, 1};
+#define chapUnlocked unlockedArr[campaign == 2]
+#define CC (&chapTab[curChap])
+static void setMode(int m) { campaign = m; chapTab = m == 2 ? INF : BOOKS; chapCount = m == 2 ? NCIRCLES : NBOOKS; }
+static int chapWave(void) { return campaign ? wave - (CC->startWave - 1) : wave; }
+/* checks every generated level (66 books and 9 circles) */
+static int validateGenerated(void)
+{
+    int bad = 0, total = 0;
+    for (int mode = 1; mode <= 2; mode++) {
+        const Chapter *tab = mode == 2 ? INF : BOOKS;
+        int n = mode == 2 ? NCIRCLES : NBOOKS;
+        for (int c = 0; c < n; c++) {
+            const Chapter *C = &tab[c];
+            pendingHazard = C->hazard; pendingTheme = C->theme; pendingExit = C->exitGate;
+            buildMap(C->map);
+            total++;
+            int starts = 0, ws = 0, zsn = 0, signs = 0, gates = 0, prob = 0;
+            static const int d[4][2] = {{1,0},{-1,0},{0,1},{0,-1}};
+            for (int y = 1; y < MH - 1; y++)
+                for (int x = 1; x < MW - 1; x++) {
+                    char ch = map[y][x];
+                    int inN = 0, outN = 0;
+                    for (int k = 0; k < 4; k++) { char nb = map[y + d[k][1]][x + d[k][0]]; if (isFloorC(nb)) inN++; if (isOutsideC(nb)) outN++; }
+                    if (ch == 'S') starts++;
+                    if (ch == 'Z') zsn++;
+                    if (ch == 'B') { ws++; if (inN != 1 || outN != 1) { printf("%s: window %d,%d in=%d out=%d\n", C->title, x, y, inN, outN); prob++; } }
+                    if (ch == 'D' && inN != 2) { printf("%s: door %d,%d floor-neighbours=%d\n", C->title, x, y, inN); prob++; }
+                    if (strchr("pacblTvhmX", ch)) { signs++; if (inN < 1) { printf("%s: sign %c %d,%d has no floor\n", C->title, ch, x, y); prob++; } }
+                    if (ch == 'O') { gates++; if (inN < 1) { printf("%s: gate %d,%d has no floor\n", C->title, x, y); prob++; } }
+                }
+            static int seen[MH][MW]; memset(seen, 0, sizeof(seen));
+            int qx[MW * MH], qy[MW * MH], h = 0, t = 0;
+            for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) if (map[y][x] == 'S') { seen[y][x] = 1; qx[t] = x; qy[t] = y; t++; }
+            while (h < t) {
+                int x = qx[h], y = qy[h]; h++;
+                for (int k = 0; k < 4; k++) {
+                    int nx = x + d[k][0], ny = y + d[k][1]; char ch = cellC(nx, ny);
+                    if (seen[ny][nx] || !(isFloorC(ch) || ch == 'D')) continue;
+                    seen[ny][nx] = 1; qx[t] = nx; qy[t] = ny; t++;
+                }
+            }
+            int unreached = 0;
+            for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) if (isFloorC(map[y][x]) && !seen[y][x]) unreached++;
+            if (unreached) { printf("%s: %d floor cells unreachable\n", C->title, unreached); prob++; }
+            if (starts != 2) { printf("%s: %d starts\n", C->title, starts); prob++; }
+            if (ws < 3 || zsn != ws) { printf("%s: %d windows, %d spawns\n", C->title, ws, zsn); prob++; }
+            if (signs != 10) { printf("%s: %d of 10 wall signs placed\n", C->title, signs); prob++; }
+            if (C->exitGate && gates != 1) { printf("%s: %d exit gates\n", C->title, gates); prob++; }
+            if (prob) bad++;
+        }
+    }
+    printf("generated levels checked: %d, with problems: %d\n", total, bad);
+    return bad;
+}
 static void addFlash(float x, float y, float r, float g, float b, float rad, float life);
 
 static void addPoints(Player *p, int n) { p->points += goldT > 0.f ? n * 2 : n; }
@@ -1308,7 +1730,7 @@ static void givePistol(Player *p)
 static void placeAtStart(Player *p, int which)
 {
     int k = 0;
-    for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) if (map[y][x] == 'S') { if (k == which) { p->x = x + 0.5f; p->y = y + 0.5f; } k++; }
+    for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) if (map[y][x] == 'S') { if (k == which) { p->x = p->safeX = x + 0.5f; p->y = p->safeY = y + 0.5f; p->z = p->vz = 0; } k++; }
 }
 static void resetGame(int players, int m)
 {
@@ -1334,10 +1756,25 @@ static void resetGame(int players, int m)
 /* begin a campaign chapter: its map, its starting difficulty and a purse to match */
 static void startChapter(int c, int players)
 {
-    campaign = 1; curChap = c;
-    resetGame(players, CHAP[c].map);
-    wave = CHAP[c].startWave - 1;
-    for (int i = 0; i < 2; i++) pl[i].points += 450 * (CHAP[c].startWave - 1);
+    curChap = c;
+    const Chapter *C = &chapTab[c];
+    pendingHazard = C->hazard; pendingTheme = C->theme; pendingExit = C->exitGate;
+    static Player keep[2];
+    memcpy(keep, pl, sizeof(keep));
+    resetGame(players, C->map);
+    curWind = C->wind; gateOpen = 0; escaped = 0;
+    wave = C->startWave - 1;
+    for (int i = 0; i < 2; i++) {
+        Player *p = &pl[i], *k = &keep[i];
+        if (carryValid && k->on) {             /* carry money, weapons and upgrades on to the next level */
+            p->points = k->points;
+            memcpy(p->weap, k->weap, sizeof(p->weap)); memcpy(p->lvl, k->lvl, sizeof(p->lvl));
+            memcpy(p->mag, k->mag, sizeof(p->mag)); memcpy(p->res, k->res, sizeof(p->res));
+            p->cur = k->cur; p->slots = k->slots; p->maxSlots = k->maxSlots;
+            p->vest = k->vest; p->hands = k->hands; p->maxHp = k->maxHp; p->hp = k->maxHp;
+        } else p->points += 300 * (C->startWave - 1);
+    }
+    carryValid = 0;
 }
 /* demons per wave follow the Fibonacci sequence: 1, 1, 2, 3, 5, 8, 13, 21 ... (campaign chapters start at the 4th term) */
 static int fibN(int n)
@@ -1346,7 +1783,7 @@ static int fibN(int n)
     for (int i = 0; i < n; i++) { long long t = a + b; a = b; b = t; if (a > 2000000000LL) return 2000000000; }
     return (int)a;
 }
-static int waveCount(int w) { return fibN(campaign ? w - (CHAP[curChap].startWave - 1) + 3 : w); }
+static int waveCount(int w) { return fibN(campaign ? w - (chapTab[curChap].startWave - 1) + 3 : w); }
 static float waveHp(int w) { float k = (float)(w - 1); return 100.f + 45.f * k + 0.6f * k * k; }
 static int maxAlive(void) { int a = (nPlayers == 2 ? 24 : 18) + (wave / 4 < 8 ? wave / 4 : 8); return a > MAXZ ? MAXZ : a; }
 static float zDamage(void) { return clampf(34.f + wave * 0.45f, 34.f, 80.f); }
@@ -1356,7 +1793,7 @@ static void startWave(void)
     wave++;
     toSpawn = waveCount(wave);
     if (campaign) {
-        const Chapter *C = &CHAP[curChap];
+        const Chapter *C = &chapTab[curChap];
         int cw = chapWave();
         bossesToSpawn = (C->bossEvery && cw % C->bossEvery == 0) ? 1 + (nPlayers == 2 && cw >= 6 ? 1 : 0) : 0;
         if (C->dragon && cw >= C->waves) { dragonPending = 1; bossesToSpawn = 0; }
@@ -1371,7 +1808,7 @@ static void startWave(void)
             say(p, "YOU'RE BACK");
         }
     sndRoundStart();
-    if (dragonPending) sayAll("THE GREAT RED DRAGON COMES");
+    if (dragonPending) sayAll(CC->dragon == 2 ? "LUCIFER STIRS IN THE ICE" : "THE GREAT RED DRAGON COMES");
     else if (bossesToSpawn) sayAll("THE BEAST RISES FROM THE SEA");
 }
 static void spawnZombie(int boss)          /* boss: 0 demon, 1 Beast, 2 Dragon */
@@ -1388,9 +1825,10 @@ static void spawnZombie(int boss)          /* boss: 0 demon, 1 Beast, 2 Dragon *
         float hp = waveHp(wave);
         float crawl = wave >= 6 ? clampf(0.04f + (wave - 6) * 0.01f, 0.f, 0.2f) : 0.f;
         float bloat = wave >= 8 ? clampf(0.03f + (wave - 8) * 0.005f, 0.f, 0.12f) : 0.f;
-        if (campaign) { crawl = fmaxf(crawl, CHAP[curChap].crawl); bloat = fmaxf(bloat, CHAP[curChap].bloat); }
+        if (campaign) { crawl = fmaxf(crawl, chapTab[curChap].crawl); bloat = fmaxf(bloat, chapTab[curChap].bloat); }
         float r = frand();
-        if (boss == 2) { z->type = ZT_DRAGON; z->hp = nPlayers == 2 ? 36000.f : 24000.f; z->speed = 1.05f; z->atkCd = 3.f; }
+        if (boss == 3) { z->type = ZT_DRAGON; z->variant = 1; z->hp = nPlayers == 2 ? 90000.f : 60000.f; z->speed = 0.f; z->atkCd = 3.f; z->x = bossCX + 0.5f; z->y = bossCY + 0.5f; }
+        else if (boss == 2) { z->type = ZT_DRAGON; z->variant = 0; z->hp = nPlayers == 2 ? 36000.f : 24000.f; z->speed = 1.05f; z->atkCd = 3.f; }
         else if (boss) { z->type = ZT_BRUTE; z->hp = 1500.f + 300.f * wave; z->speed = 1.15f + wave * 0.004f; }
         else if (r < crawl) { z->type = ZT_CRAWL; z->hp = hp * 0.6f; z->speed = 1.5f + frand() * 0.4f; }
         else if (r < crawl + bloat) { z->type = ZT_BLOAT; z->hp = hp * 2.2f; z->speed = 0.75f; }
@@ -1401,7 +1839,7 @@ static void spawnZombie(int boss)          /* boss: 0 demon, 1 Beast, 2 Dragon *
         }
         z->maxHp = z->hp;
         z->groanT = 1.f + frand() * 4.f;
-        if (boss == 2) { dragonPending = 0; playV(V_GROAN, 3.f, 28.f, 0, 0.9f, 0, 0); playV(V_NOISE, 2.f, 0, 0, 0.6f, 0.03f, 0); }
+        if (boss >= 2) { dragonPending = 0; playV(V_GROAN, 3.f, 28.f, 0, 0.9f, 0, 0); playV(V_NOISE, 2.f, 0, 0, 0.6f, 0.03f, 0); }
         else if (boss) { bossesToSpawn--; playV(V_GROAN, 2.f, 40.f, 0, 0.7f, 0, 0); }
         else toSpawn--;
         return;
@@ -1459,7 +1897,7 @@ static void killZombie(Zombie *z, Player *by)
     addFlash(z->x, z->y, 0.9f, 0.4f, 0.12f, 2.6f, 0.45f);
     if (z->type == ZT_BRUTE) { dropPower(z->x, z->y); sayAll("THE BEAST IS SLAIN! +500"); }
     if (z->type == ZT_DRAGON) {
-        dropPower(z->x, z->y); sayAll("THE DRAGON IS BOUND! +2000");
+        dropPower(z->x, z->y); sayAll(z->variant ? "LUCIFER IS DEFEATED! +2000" : "THE DRAGON IS BOUND! +2000");
         spawnParts(z->x, z->y, 0.8f, 60, EM(0xFFFF6010), 3.5f, 0.06f); addFlash(z->x, z->y, 2.5f, 1.2f, 0.4f, 8.f, 1.5f);
         playV(V_NOISE, 2.5f, 0, 0, 0.9f, 0.05f, 0);
     }
@@ -1676,7 +2114,7 @@ static void promptFor(Player *p, char *out)
 /* ------------------------------------------------------------------ */
 /* Input                                                              */
 /* ------------------------------------------------------------------ */
-typedef struct { float fwd, strafe, turn; int fire, use, reload, swap; } Ctl;
+typedef struct { float fwd, strafe, turn; int fire, use, reload, swap, jump; } Ctl;
 static SDL_GameController *pads[2];
 static int prevReload[2], prevSwap[2], prevFire[2];
 static float ax(SDL_GameController *g, SDL_GameControllerAxis a)
@@ -1696,6 +2134,7 @@ static Ctl readCtl(int i)
         if (k[SDL_SCANCODE_Q]) c.strafe -= 1;
         if (k[SDL_SCANCODE_E]) c.strafe += 1;
         c.fire |= k[SDL_SCANCODE_SPACE]; c.reload |= k[SDL_SCANCODE_R]; c.use |= k[SDL_SCANCODE_F]; c.swap |= k[SDL_SCANCODE_C];
+        c.jump |= k[SDL_SCANCODE_LSHIFT] | k[SDL_SCANCODE_V];
     }
     if (i == 1 || nPlayers == 1) {
         if (k[SDL_SCANCODE_UP]) c.fwd += 1;
@@ -1705,6 +2144,7 @@ static Ctl readCtl(int i)
         if (k[SDL_SCANCODE_COMMA]) c.strafe -= 1;
         if (k[SDL_SCANCODE_PERIOD]) c.strafe += 1;
         c.fire |= k[SDL_SCANCODE_RETURN]; c.reload |= k[SDL_SCANCODE_SLASH]; c.use |= k[SDL_SCANCODE_RSHIFT]; c.swap |= k[SDL_SCANCODE_APOSTROPHE];
+        c.jump |= k[SDL_SCANCODE_RCTRL] | k[SDL_SCANCODE_BACKSLASH];
     }
     SDL_GameController *g = pads[i];
     if (g) {
@@ -1716,7 +2156,7 @@ static Ctl readCtl(int i)
         if (SDL_GameControllerGetButton(g, SDL_CONTROLLER_BUTTON_DPAD_LEFT)) c.turn -= 1;
         if (SDL_GameControllerGetButton(g, SDL_CONTROLLER_BUTTON_DPAD_RIGHT)) c.turn += 1;
         if (SDL_GameControllerGetButton(g, SDL_CONTROLLER_BUTTON_LEFTSHOULDER)) c.strafe -= 1;
-        if (SDL_GameControllerGetButton(g, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER)) c.strafe += 1;
+        c.jump |= SDL_GameControllerGetButton(g, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER) | SDL_GameControllerGetButton(g, SDL_CONTROLLER_BUTTON_LEFTSTICK);
         c.fire |= SDL_GameControllerGetButton(g, SDL_CONTROLLER_BUTTON_A) || ax(g, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) > 0.4f;
         c.use |= SDL_GameControllerGetButton(g, SDL_CONTROLLER_BUTTON_B);
         c.reload |= SDL_GameControllerGetButton(g, SDL_CONTROLLER_BUTTON_X);
@@ -1758,8 +2198,10 @@ static int moveOk(float x, float y, int (*pass)(int, int), float r)
 {
     return pass((int)(x - r), (int)(y - r)) && pass((int)(x + r), (int)(y - r)) && pass((int)(x - r), (int)(y + r)) && pass((int)(x + r), (int)(y + r));
 }
+static int godMode;          /* test only: players cannot go down */
 static void downPlayer(Player *p)
 {
+    if (godMode) { p->hp = p->maxHp; return; }
     p->state = ST_DOWN; p->downT = 30.f; p->hp = 0; p->reviveT = 0;
     playV(V_TONE, 0.8f, 300, 80, 0.4f, 0, 0);
     computeFlow();
@@ -1786,9 +2228,36 @@ static void updatePlayer(int i, float dt)
         if (aimTarget(p, optAim == 2 ? 0.32f : 0.16f, &ad)) p->ang += clampf(ad, -rate * dt, rate * dt);
     }
     float dx = cosf(p->ang), dy = sinf(p->ang);
-    float mvx = (dx * c.fwd - dy * c.strafe) * 3.0f * dt, mvy = (dy * c.fwd + dx * c.strafe) * 3.0f * dt;
+    char under = cellC((int)p->x, (int)p->y);
+    int grounded = p->z <= 0.001f;
+    /* jumping */
+    if (c.jump && grounded) { p->vz = 4.3f; playV(V_TONE, 0.08f, 300, 420, 0.12f, 0, 0); }
+    p->vz -= 12.f * dt; p->z += p->vz * dt;
+    if (p->z < 0) { p->z = 0; p->vz = 0; }
+    grounded = p->z <= 0.001f;
+    float speed = 3.0f;
+    if (grounded && under == ',') speed = 1.5f;                                 /* mire and marsh */
+    float tvx = (dx * c.fwd - dy * c.strafe) * speed, tvy = (dy * c.fwd + dx * c.strafe) * speed;
+    if (grounded && under == '=') { p->ivx += (tvx - p->ivx) * clampf(dt * 1.6f, 0, 1); p->ivy += (tvy - p->ivy) * clampf(dt * 1.6f, 0, 1); }   /* ice: you slide */
+    else if (grounded) { p->ivx = tvx; p->ivy = tvy; }
+    else { p->ivx += (tvx - p->ivx) * clampf(dt * 4.f, 0, 1); p->ivy += (tvy - p->ivy) * clampf(dt * 4.f, 0, 1); }
+    float mvx = p->ivx * dt, mvy = p->ivy * dt;
+    if (curWind > 0) {                                                          /* Lust: the hurricane that never rests */
+        float wa = SDL_GetTicks() / 1000.f * 0.23f;
+        mvx += cosf(wa) * curWind * dt; mvy += sinf(wa) * curWind * dt;
+    }
     if (moveOk(p->x + mvx, p->y, playerPass, 0.25f)) p->x += mvx;
     if (moveOk(p->x, p->y + mvy, playerPass, 0.25f)) p->y += mvy;
+    under = cellC((int)p->x, (int)p->y);
+    if (grounded && (under == '_' || under == '~')) {                         /* fell into a chasm or the boiling river */
+        p->hp -= under == '~' ? 45.f : 25.f; p->regenDelay = 3.f; p->hurtFlash = 0.6f; p->shake = 0.5f;
+        p->x = p->safeX; p->y = p->safeY; p->ivx = p->ivy = 0;
+        playV(V_NOISE, 0.5f, 0, 0, 0.6f, 0.05f, 0);
+        say(p, under == '~' ? "THE BOILING BLOOD BURNS!" : "YOU FELL!");
+        if (p->hp <= 0) { downPlayer(p); return; }
+    } else if (grounded && under != '*') { p->safeX = p->x; p->safeY = p->y; }
+    if (grounded && under == '^') { p->hp -= 22.f * dt; p->regenDelay = 2.f; p->hurtFlash = 0.15f; if (p->hp <= 0) { downPlayer(p); return; } }
+    if (under == '*' && gateOpen) escaped = 1;
     if (fabsf(c.fwd) + fabsf(c.strafe) > 0.1f) p->bob += dt * 9.f;
     if (p->fireCd > 0) p->fireCd -= dt;
     if (p->recoil > 0) p->recoil -= dt * 6.f;
@@ -1867,13 +2336,13 @@ static void updateZombies(float dt)
         if (z->atkCd > 0) z->atkCd -= dt;
         if (z->type == ZT_DRAGON) {                     /* breathes fire down a line every few seconds */
             z->breathT -= dt;
-            if (z->breathT <= 0 && td < 7.f) {
+            if (z->breathT <= 0 && td < (z->variant ? 12.f : 7.f)) {
                 float fx = (tgt->x - z->x) / td, fy = (tgt->y - z->y) / td;
                 z->breathT = 5.f; z->atkAnim = 0.6f;
-                for (int k = 0; k < 26; k++) {
+                for (int k = 0; k < (z->variant ? 44 : 26); k++) {
                     float d = 0.6f + k * 0.26f;
                     if (castDist(z->x, z->y, fx, fy) < d) break;
-                    spawnParts(z->x + fx * d, z->y + fy * d, 0.6f, 2, EM(k & 1 ? 0xFFFF6010 : 0xFFFFC040), 0.8f, 0.09f);
+                    spawnParts(z->x + fx * d, z->y + fy * d, 0.6f, 2, z->variant ? EM(k & 1 ? 0xFFA0D8FF : 0xFFFFFFFF) : EM(k & 1 ? 0xFFFF6010 : 0xFFFFC040), 0.8f, 0.09f);
                 }
                 addFlash(z->x + fx * 2.f, z->y + fy * 2.f, 1.6f, 0.7f, 0.2f, 5.f, 0.8f);
                 playV(V_NOISE, 1.0f, 0, 0, 0.7f, 0.08f, 0);
@@ -1881,7 +2350,7 @@ static void updateZombies(float dt)
                     Player *q = &pl[k];
                     if (!q->on || q->state != ST_UP) continue;
                     float qx = q->x - z->x, qy = q->y - z->y, qd = sqrtf(qx * qx + qy * qy);
-                    if (qd < 7.5f && qd > 0.01f && (qx * fx + qy * fy) / qd > 0.85f && castDist(z->x, z->y, qx / qd, qy / qd) >= qd) {
+                    if (qd < (z->variant ? 12.5f : 7.5f) && qd > 0.01f && (qx * fx + qy * fy) / qd > 0.85f && castDist(z->x, z->y, qx / qd, qy / qd) >= qd) {
                         q->hp -= 35.f; q->regenDelay = 3.f; q->hurtFlash = 0.5f; q->shake = 0.6f;
                         if (q->hp <= 0) downPlayer(q);
                     }
@@ -1958,11 +2427,15 @@ static void updateGame(float dt)
     else if (trapCd > 0) trapCd -= dt;
     if (waveState == 0) {
         waveTimer -= dt;
-        if (waveTimer <= 0) startWave();
+        if (waveTimer <= 0 && !gateOpen) startWave();
+        if (escaped) {                                       /* stepped through the open gate */
+            gameState = GS_CHAPWIN; endT = 0; escaped = 0;
+            if (chapUnlocked < curChap + 2) chapUnlocked = curChap + 2 > chapCount ? chapCount + 1 : curChap + 2;
+        }
     } else {
         spawnTimer -= dt;
         if ((toSpawn > 0 || bossesToSpawn > 0 || dragonPending) && spawnTimer <= 0 && liveZombies() < maxAlive()) {
-            int boss = dragonPending && toSpawn < waveCount(wave) * 2 / 3 ? 2 :
+            int boss = dragonPending && (CC->dragon == 2 || toSpawn < waveCount(wave) * 2 / 3) ? (CC->dragon == 2 ? 3 : 2) :
                        bossesToSpawn > 0 && (toSpawn < waveCount(wave) * 2 / 3 || toSpawn == 0) ? 1 : 0;
             if (boss || toSpawn > 0) spawnZombie(boss);
             spawnTimer = clampf(fminf(2.0f - wave * 0.03f, 90.f / (float)waveCount(wave)), 0.04f, 2.f);   /* big waves pour in faster */
@@ -1970,9 +2443,14 @@ static void updateGame(float dt)
         if (toSpawn <= 0 && bossesToSpawn <= 0 && !dragonPending && liveZombies() == 0) {
             waveState = 0; waveTimer = 9.f; musicMode = 0;
             sndRoundEnd();
-            if (campaign && chapWave() >= CHAP[curChap].waves) {
-                gameState = GS_CHAPWIN; endT = 0;
-                if (chapUnlocked < curChap + 2) chapUnlocked = curChap + 2 > NCHAP ? NCHAP + 1 : curChap + 2;
+            if (campaign && chapWave() >= chapTab[curChap].waves) {
+                if (CC->exitGate) {                          /* the way down (or out) opens */
+                    gateOpen = 1;
+                    for (int y = 0; y < MH; y++) for (int x = 0; x < MW; x++) if (map[y][x] == 'O') map[y][x] = '*';
+                    sayAll(curChap == chapCount - 1 ? "THE WAY OUT IS OPEN!" : "THE WAY DOWN IS OPEN!");
+                    playV(V_TONE, 1.2f, 220, 440, 0.4f, 0, 0);
+                } else { gameState = GS_CHAPWIN; endT = 0; }
+                if (chapUnlocked < curChap + 2) chapUnlocked = curChap + 2 > chapCount ? chapCount + 1 : curChap + 2;
             } else if (!campaign && wave >= WIN_WAVE) { gameState = GS_WIN; endT = 0; wonMap[curMap] = 1; if (wave > bestWave[curMap]) bestWave[curMap] = wave; }
         }
     }
@@ -2049,7 +2527,7 @@ static void computeLights(float t, float dt)
         for (int vx = 0; vx < LGW; vx++) {
             char c = cellC(vx < MW ? vx : MW - 1, vy < MH ? vy : MH - 1);
             int out = isOutsideC(c) || c == '#';
-            lfR[vy][vx] = out ? 0.85f : 0.52f; lfG[vy][vx] = out ? 0.40f : 0.43f; lfB[vy][vx] = out ? 0.30f : 0.42f;
+            lfR[vy][vx] = out ? 0.85f : curTheme.amb[0]; lfG[vy][vx] = out ? 0.40f : curTheme.amb[1]; lfB[vy][vx] = out ? 0.30f : curTheme.amb[2];
         }
     for (int i = 0; i < nTorches; i++) {
         float f = 0.86f + 0.10f * sinf(t * 11.f + i * 1.7f) + 0.06f * sinf(t * 23.f + i * 3.1f);
@@ -2063,6 +2541,13 @@ static void computeLights(float t, float dt)
                 float k = 0.30f + 0.11f * (6 - boards[y][x]);
                 for (int q = 0; q < 4; q++) if (isFloorC(cellC(x + d[q][0], y + d[q][1])))
                     lightAdd(x + 0.5f + d[q][0] * 0.6f, y + 0.5f + d[q][1] * 0.6f, 0.95f * k, 0.25f * k, 0.10f * k, 3.2f);
+            } else if (c == '~') {
+                if (((x + y) & 1) == 0) lightAdd(x + 0.5f, y + 0.5f, curHazard == HZ_BLOOD ? 0.55f : 0.6f, curHazard == HZ_BLOOD ? 0.08f : 0.25f, 0.04f, 2.2f);
+            } else if (c == '^') {
+                float fl = 0.7f + 0.3f * sinf(t * 9.f + x * 1.3f + y);
+                lightAdd(x + 0.5f, y + 0.5f, 0.5f * fl, 0.22f * fl, 0.05f * fl, 2.0f);
+            } else if (c == '*') {
+                lightAdd(x + 0.5f, y + 0.5f, 0.9f, 0.75f, 0.4f, 3.5f);
             } else if (c == 'e' && trapOn) {
                 float fl = 0.6f + 0.4f * (float)(hash2(x, y, (int)(t * 20.f)) & 1);
                 lightAdd(x + 0.5f, y + 0.5f, 0.10f * fl, 0.30f * fl, 0.50f * fl, 1.8f);
@@ -2306,9 +2791,9 @@ static void renderView(int pi, int vx, int vy, int vw, int vh)
     float plane = clampf(0.5f * (float)vw / (float)vh, 0.55f, 1.0f);
     float plX = -dirY * plane, plY = dirX * plane;
     float P = vw / (2.f * plane);
-    float eye = p->state == ST_UP ? 0.5f : 0.18f;
+    float eye = p->state == ST_UP ? 0.5f + p->z * 0.5f : 0.18f;          /* the camera rises when you jump */
     int horizon = vh / 2 + (int)(sinf(p->bob * 0.5f) * 2.f) + (p->shake > 0 ? (int)((frand() - 0.5f) * p->shake * 12.f) : 0);
-    const MapDef *M = &MAPS[curMap];
+    const Theme *M = &curTheme;
     /* walls */
     for (int x = 0; x < vw; x++) {
         float cam = 2.f * x / vw - 1.f;
@@ -2373,6 +2858,24 @@ static void renderView(int pi, int vx, int vy, int vw, int vh)
                         uint32_t g = (hash2((int)(fx * 6.f), (int)(fy * 6.f), 7) & 3) ? 0xFF3A2018 : 0xFF48281C;
                         col = litC(g, sh, lr, lg, lb);
                     }
+                } else if (c == '_') {                              /* a chasm falling away into darkness */
+                    float u = fx - cx, v = fy - cy, e = fminf(fminf(u, 1 - u), fminf(v, 1 - v));
+                    col = mixC(0xFF000000, 0xFF3A0A06, (int)(clampf(0.25f - e, 0, 0.25f) * 600.f));
+                } else if (c == '~') {                              /* boiling blood or lava */
+                    int b = (int)(hash2((int)(fx * 5.f), (int)(fy * 5.f), (int)(SDL_GetTicks() / 180)) & 63);
+                    col = curHazard == HZ_BLOOD ? mixC(0xFF6A0808, 0xFFD02010, pulse / 2 + b) : mixC(0xFFB02806, 0xFFFFB030, pulse / 2 + b);
+                } else if (c == ',') {                              /* mire */
+                    uint32_t g = curHazard == HZ_MARSH ? 0xFF22301E : 0xFF3A2C1A;
+                    if (hash2((int)(fx * 7.f), (int)(fy * 7.f), 9) % 5 == 0) g = shadeC(g, 160);
+                    col = litC(g, sh, lr, lg, lb);
+                } else if (c == '=') {                              /* the ice of Cocytus */
+                    float u = fx - cx, v = fy - cy;
+                    uint32_t g = (fabsf(u - v) < 0.03f || fabsf(u + v * 0.5f - 0.7f) < 0.025f) ? 0xFFE0F0FF : 0xFF9ABCD6;
+                    col = litC(g, sh, lr, lg, lb);
+                } else if (c == '^') {                              /* burning tomb: flames licking up */
+                    col = (hash2((int)(fx * 6.f), (int)(fy * 6.f), (int)(SDL_GetTicks() / 90)) % 3 == 0) ? mixC(0xFFFF6010, 0xFFFFD040, pulse) : litC(0xFF2A1A14, sh, lr, lg, lb);
+                } else if (c == '*') {                              /* the open way out */
+                    col = mixC(0xFFFFC040, 0xFFFFF8D0, pulse);
                 } else if (c == 'e') {
                     float u = fx - cx, v = fy - cy;
                     int grid = (u < 0.08f || v < 0.08f || (u > 0.45f && u < 0.55f));
@@ -2427,11 +2930,11 @@ static void renderView(int pi, int vx, int vy, int vw, int vh)
         } else if (z->type == ZT_BLOAT) {
             b->sp = SP_BLOAT + (z->atkAnim > 0 ? 2 : (walkF & 1)); b->scale = 1.05f;
         } else {
-            int base = z->type == ZT_DRAGON ? SP_DRAGON : z->type == ZT_BRUTE ? SP_BRUTE : SP_Z + z->variant * 9;
+            int base = z->type == ZT_DRAGON ? (z->variant ? SP_LUCIFER : SP_DRAGON) : z->type == ZT_BRUTE ? SP_BRUTE : SP_Z + z->variant * 9;
             if (z->dead) { float t = 2.0f - z->deadT; b->sp = base + (t < 0.15f ? 6 : t < 0.35f ? 7 : 8); }
             else if (z->atkAnim > 0) b->sp = base + (z->atkAnim > 0.17f ? 4 : 5);
             else b->sp = base + walkF;
-            b->scale = z->type == ZT_DRAGON ? 2.1f : z->type == ZT_BRUTE ? 1.45f : 0.97f;
+            b->scale = z->type == ZT_DRAGON ? (z->variant ? 2.6f : 2.1f) : z->type == ZT_BRUTE ? 1.45f : 0.97f;
             if (z->type == ZT_NORMAL && z->speed > 1.8f) b->tint = 0xFFC04030;
         }
         if (z->stun > 0) b->tint = 0xFFFFFFFF;
@@ -2499,7 +3002,7 @@ static void renderView(int pi, int vx, int vy, int vw, int vh)
     uint32_t pc = pi == 0 ? 0xFFFFA050 : 0xFF60D0FF;
     sprintf(buf, "$%d", p->points);
     drawText(vx + 10, vy + vh - 10 - 7 * big, big, goldT > 0 ? 0xFFFFE040 : pc, buf);
-    if (campaign) sprintf(buf, "WAVE %d/%d", chapWave(), CHAP[curChap].waves); else sprintf(buf, "WAVE %d", wave);
+    if (campaign) sprintf(buf, "WAVE %d/%d", chapWave(), chapTab[curChap].waves); else sprintf(buf, "WAVE %d", wave);
     drawText(vx + 10, vy + 8, big, 0xFFD02020, buf);
     if (waveState == 1) {
         sprintf(buf, "DEMONS %d", toSpawn + bossesToSpawn + liveZombies());
@@ -2542,14 +3045,14 @@ static void renderView(int pi, int vx, int vy, int vw, int vh)
     }
     if (p->msgT > 0) drawTextC(vx + vw / 2, vy + 46, 2, 0xFFFFE070, p->msg);
     if (waveBanner > 0) {
-        if (campaign) sprintf(buf, "WAVE %d OF %d", chapWave(), CHAP[curChap].waves); else sprintf(buf, "WAVE %d", wave);
+        if (campaign) sprintf(buf, "WAVE %d OF %d", chapWave(), chapTab[curChap].waves); else sprintf(buf, "WAVE %d", wave);
         drawTextC(vx + vw / 2, vy + vh / 3 - 10, big + 1, 0xFFD02020, buf);
         if (dragonPending) drawTextC(vx + vw / 2, vy + vh / 3 + 20, 2, 0xFFFF4020, "THE DRAGON COMES");
         else if (bossesToSpawn) drawTextC(vx + vw / 2, vy + vh / 3 + 20, 2, 0xFFFF8040, "BOSS WAVE");
     }
     if (waveState == 0 && wave > 0 && waveTimer > 6.f) drawTextC(vx + vw / 2, vy + vh / 3, big, 0xFFF0F0F0, "WAVE SURVIVED");
     if (goldT > 0) drawTextC(vx + vw / 2, vy + 28, 2, 0xFFFFE040, "DOUBLE PAY");
-    if (trapOn) drawTextC(vx + vw / 2, vy + 10, 1, 0xFF90E8FF, "FENCE LIVE");
+    if (trapOn) drawTextC(vx + vw / 2, vy + 40, 1, 0xFF90E8FF, "FENCE LIVE");
     clipX0 = 0; clipX1 = FBW; clipY0 = 0; clipY1 = FBH;
 }
 
@@ -2595,81 +3098,94 @@ static void renderTitle(float t)
 {
     titleBackdrop(t);
     blendRect(150, 92, 340, 172, 0xFF000000, 150);
-    char buf[64];
-    const char *items[6];
-    char pl_[24], mp[40];
+    char buf[80];
+    const char *items[5];
+    char pl_[24];
     sprintf(pl_, "PLAYERS  < %d >", menuPlayers);
-    sprintf(mp, "ENDLESS MAP  < %s >", MAPS[curMap].name);
-    items[0] = "CAMPAIGN"; items[1] = "ENDLESS"; items[2] = pl_; items[3] = mp; items[4] = "OPTIONS"; items[5] = "QUIT";
-    for (int i = 0; i < 6; i++) {
+    items[0] = "CAMPAIGN: THE 66 BOOKS"; items[1] = "INFERNO: THE NINE CIRCLES"; items[2] = pl_; items[3] = "OPTIONS"; items[4] = "QUIT";
+    for (int i = 0; i < 5; i++) {
         uint32_t c = i == menuSel ? 0xFFFFE070 : 0xFFD8D8D8;
-        drawTextC(FBW / 2, 100 + i * 22, 2, c, items[i]);
-        if (i == menuSel) { drawText(162, 100 + i * 22, 2, 0xFFFFE070, ">"); }
+        drawTextC(FBW / 2, 102 + i * 24, 2, c, items[i]);
+        if (i == menuSel) drawText(158, 102 + i * 24, 2, 0xFFFFE070, ">");
     }
     if (menuSel == 0) {
-        sprintf(buf, "SEVEN CHAPTERS FROM SCRIPTURE  -  %d OF 7 UNLOCKED", chapUnlocked > NCHAP ? NCHAP : chapUnlocked);
-        drawTextC(FBW / 2, 236, 1, 0xFFB0B0B0, buf);
-        drawTextC(FBW / 2, 250, 1, 0xFFFFE070, chapUnlocked > NCHAP ? "THE DRAGON IS BOUND. THE CAMPAIGN IS COMPLETE." : "FROM THE BOTTOMLESS PIT TO THE DRAGON BOUND");
-    } else {
-        drawTextC(FBW / 2, 236, 1, 0xFFB0B0B0, MAPS[curMap].blurb);
-        if (wonMap[curMap]) sprintf(buf, "BEST: WAVE %d  -  SURVIVED TO DAWN!", bestWave[curMap]);
-        else if (bestWave[curMap]) sprintf(buf, "BEST ON THIS MAP: WAVE %d", bestWave[curMap]);
-        else strcpy(buf, "NOT PLAYED YET");
-        drawTextC(FBW / 2, 250, 1, 0xFFFFE070, buf);
+        int u = unlockedArr[0] > NBOOKS ? NBOOKS : unlockedArr[0];
+        sprintf(buf, "GENESIS TO REVELATION  -  %d OF 66 BOOKS OPEN", u);
+        drawTextC(FBW / 2, 232, 1, 0xFFB0B0B0, buf);
+        drawTextC(FBW / 2, 246, 1, 0xFFFFE070, unlockedArr[0] > NBOOKS ? "THE DRAGON IS BOUND. THE CAMPAIGN IS COMPLETE." : "A KING JAMES VERSE OPENS EVERY BOOK");
+    } else if (menuSel == 1) {
+        int u = unlockedArr[1] > NCIRCLES ? NCIRCLES : unlockedArr[1];
+        sprintf(buf, "DANTE'S DESCENT  -  10 WAVES A CIRCLE  -  %d OF 9 OPEN", u);
+        drawTextC(FBW / 2, 232, 1, 0xFFB0B0B0, buf);
+        drawTextC(FBW / 2, 246, 1, 0xFFFFE070, unlockedArr[1] > NCIRCLES ? "YOU ESCAPED AND BEHELD THE STARS." : "SURVIVE, THEN FIND THE WAY DOWN. ESCAPE TO WIN.");
     }
-    drawTextC(FBW / 2, 268, 1, 0xFF909090, "DEMONS PER WAVE FOLLOW THE FIBONACCI SEQUENCE");
-    drawTextC(FBW / 2, 300, 1, 0xFFC8C8C8, "P1  WASD MOVE/TURN  Q E STRAFE  SPACE FIRE  F USE  R RELOAD  C SWAP");
-    drawTextC(FBW / 2, 312, 1, 0xFFC8C8C8, "P2  ARROWS  , . STRAFE  ENTER FIRE  RSHIFT USE  / RELOAD  ' SWAP");
-    drawTextC(FBW / 2, 324, 1, 0xFFC8C8C8, "GAMEPADS: STICKS  A FIRE  B USE  X RELOAD  Y SWAP  START PAUSE");
-    drawTextC(FBW / 2, 340, 1, 0xFF909090, "MENU: UP/DOWN CHOOSE  LEFT/RIGHT CHANGE  ENTER OR SPACE SELECT");
+    drawTextC(FBW / 2, 264, 1, 0xFF909090, "DEMONS PER WAVE FOLLOW THE FIBONACCI SEQUENCE");
+    drawTextC(FBW / 2, 292, 1, 0xFFC8C8C8, "P1  WASD MOVE/TURN  Q E STRAFE  SPACE FIRE  LSHIFT JUMP  F USE  R RELOAD  C SWAP");
+    drawTextC(FBW / 2, 304, 1, 0xFFC8C8C8, "P2  ARROWS  , . STRAFE  ENTER FIRE  RCTRL JUMP  RSHIFT USE  / RELOAD  ' SWAP");
+    drawTextC(FBW / 2, 316, 1, 0xFFC8C8C8, "GAMEPADS: STICKS  A FIRE  RB JUMP  B USE  X RELOAD  Y SWAP  START PAUSE");
+    drawTextC(FBW / 2, 334, 1, 0xFF909090, "MENU: UP/DOWN CHOOSE  LEFT/RIGHT CHANGE  ENTER OR SPACE SELECT");
 }
 static void renderChapters(float t)
 {
     titleBackdrop(t);
-    blendRect(70, 84, 500, 220, 0xFF000000, 175);
-    drawTextC(FBW / 2, 90, 3, 0xFFF0F0F0, "CAMPAIGN");
-    for (int i = 0; i < NCHAP; i++) {
+    blendRect(60, 74, 520, 250, 0xFF000000, 180);
+    drawTextC(FBW / 2, 80, 3, 0xFFF0F0F0, campaign == 2 ? "THE INFERNO" : "THE 66 BOOKS");
+    int rows = 9, first = chapSel - rows / 2;
+    if (first > chapCount - rows) first = chapCount - rows;
+    if (first < 0) first = 0;
+    for (int r = 0; r < rows && first + r < chapCount; r++) {
+        int i = first + r;
         char buf[80];
         int open = i < chapUnlocked, done = i < chapUnlocked - 1;
-        sprintf(buf, "%d. %s", i + 1, open ? CHAP[i].title : "LOCKED");
+        sprintf(buf, "%d. %s", i + 1, open ? chapTab[i].title : "LOCKED");
         uint32_t c = i == chapSel ? 0xFFFFE070 : open ? 0xFFD8D8D8 : 0xFF707070;
-        drawText(110, 126 + i * 22, 2, c, buf);
-        if (open) drawText(430, 130 + i * 22, 1, done ? 0xFF80E080 : 0xFFB0B0B0, done ? "COMPLETE" : CHAP[i].ref);
-        if (i == chapSel) drawText(90, 126 + i * 22, 2, 0xFFFFE070, ">");
+        drawText(96, 112 + r * 22, 2, c, buf);
+        if (open) drawText(440, 116 + r * 22, 1, done ? 0xFF80E080 : 0xFFB0B0B0, done ? "COMPLETE" : (campaign == 2 ? THEMES[chapTab[i].theme].place : chapTab[i].ref));
+        if (i == chapSel) drawText(78, 112 + r * 22, 2, 0xFFFFE070, ">");
     }
-    drawTextC(FBW / 2, 290, 1, 0xFF909090, "ENTER PLAY    ESC BACK");
+    if (first > 0) drawTextC(FBW / 2, 104, 1, 0xFF909090, "...");
+    drawTextC(FBW / 2, 312, 1, 0xFF909090, "UP/DOWN CHOOSE   LEFT/RIGHT JUMP 10   ENTER PLAY   ESC BACK");
 }
-/* the scripture card shown before each chapter */
+/* the card shown before each book or circle */
 static void renderStory(float t, int c)
 {
     for (int y = 0; y < FBH; y++)
         for (int x = 0; x < FBW; x++) {
-            uint32_t col = mixC(0xFF2A1C10, 0xFF4A3420, (int)(128 + 60 * sinf(x * 0.02f + y * 0.03f)));
+            uint32_t col = campaign == 2 ? mixC(0xFF200806, 0xFF401410, (int)(128 + 60 * sinf(x * 0.02f + y * 0.03f)))
+                                         : mixC(0xFF2A1C10, 0xFF4A3420, (int)(128 + 60 * sinf(x * 0.02f + y * 0.03f)));
             if (hash2(x / 2, y / 2, 3) % 13 == 0) col = shadeC(col, 200);
             fb[y * FBW + x] = col;
         }
-    blendRect(40, 30, 560, 300, 0xFF000000, 90);
-    char buf[64];
-    if (c >= NCHAP) {   /* the end of the campaign */
-        drawTextC(FBW / 2, 60, 4, 0xFFFFE070, "IT IS DONE");
-        drawTextC(FBW / 2, 120, 1, 0xFFE8DCC0, "AND GOD SHALL WIPE AWAY ALL TEARS FROM THEIR EYES; AND THERE SHALL BE");
-        drawTextC(FBW / 2, 134, 1, 0xFFE8DCC0, "NO MORE DEATH, NEITHER SORROW, NOR CRYING, NEITHER SHALL THERE BE ANY");
-        drawTextC(FBW / 2, 148, 1, 0xFFE8DCC0, "MORE PAIN: FOR THE FORMER THINGS ARE PASSED AWAY.");
-        drawTextC(FBW / 2, 170, 1, 0xFFC0A060, "REVELATION 21:4");
-        drawTextC(FBW / 2, 220, 2, 0xFFF0F0F0, "MICHAEL AND GABRIEL STAND VICTORIOUS.");
-        if (((int)(t * 2)) & 1) drawTextC(FBW / 2, 290, 2, 0xFFFFE070, "PRESS ENTER");
+    blendRect(30, 26, 580, 310, 0xFF000000, 95);
+    char buf[80];
+    if (c >= chapCount) {
+        if (campaign == 2) {           /* out of Hell: the last line of the Inferno */
+            drawTextC(FBW / 2, 60, 4, 0xFFFFE070, "YOU ESCAPED");
+            drawTextC(FBW / 2, 130, 2, 0xFFE8DCC0, "THENCE WE CAME FORTH TO REBEHOLD THE STARS.");
+            drawTextC(FBW / 2, 160, 1, 0xFFC0A060, "INFERNO, CANTO XXXIV (LONGFELLOW)");
+            for (int k = 0; k < 60; k++) { int sx = (int)(hash2(k, 1, 5) % 560) + 40, sy = 190 + (int)(hash2(k, 2, 5) % 70); fillRect(sx, sy, 2, 2, 0xFFFFF8E0); }
+        } else {                       /* the end of the 66 books */
+            drawTextC(FBW / 2, 60, 4, 0xFFFFE070, "IT IS DONE");
+            drawTextC(FBW / 2, 120, 1, 0xFFE8DCC0, "AND GOD SHALL WIPE AWAY ALL TEARS FROM THEIR EYES; AND THERE SHALL BE");
+            drawTextC(FBW / 2, 134, 1, 0xFFE8DCC0, "NO MORE DEATH, NEITHER SORROW, NOR CRYING, NEITHER SHALL THERE BE ANY");
+            drawTextC(FBW / 2, 148, 1, 0xFFE8DCC0, "MORE PAIN: FOR THE FORMER THINGS ARE PASSED AWAY.");
+            drawTextC(FBW / 2, 170, 1, 0xFFC0A060, "REVELATION 21:4");
+            drawTextC(FBW / 2, 220, 2, 0xFFF0F0F0, "ALL 66 BOOKS ARE COMPLETE.");
+        }
+        if (((int)(t * 2)) & 1) drawTextC(FBW / 2, 296, 2, 0xFFFFE070, "PRESS ENTER");
         return;
     }
-    const Chapter *C = &CHAP[c];
-    sprintf(buf, "CHAPTER %d", c + 1);
-    drawTextC(FBW / 2, 44, 2, 0xFFC0A060, buf);
-    drawTextC(FBW / 2, 66, 3, 0xFFFFE070, C->title);
-    for (int i = 0; i < 4 && C->quote[i]; i++) drawTextC(FBW / 2, 116 + i * 14, 1, 0xFFE8DCC0, C->quote[i]);
-    drawTextC(FBW / 2, 180, 1, 0xFFC0A060, C->ref);
-    drawTextC(FBW / 2, 220, 1, 0xFFF0F0F0, C->goal);
-    sprintf(buf, "MAP: %s", MAPS[C->map].name);
-    drawTextC(FBW / 2, 238, 1, 0xFFB0B0B0, buf);
-    if (((int)(t * 2)) & 1) drawTextC(FBW / 2, 290, 2, 0xFFFFE070, "PRESS ENTER TO BEGIN");
+    const Chapter *C = &chapTab[c];
+    if (campaign == 2) sprintf(buf, "THE INFERNO  -  %d OF 9", c + 1); else sprintf(buf, "BOOK %d OF 66", c + 1);
+    drawTextC(FBW / 2, 38, 2, 0xFFC0A060, buf);
+    drawTextC(FBW / 2, 62, textW(C->title, 3) > 560 ? 2 : 3, 0xFFFFE070, C->title);
+    for (int i = 0; i < 4 && C->quote[i]; i++) drawTextC(FBW / 2, 110 + i * 14, 1, 0xFFE8DCC0, C->quote[i]);
+    drawTextC(FBW / 2, 172, 1, 0xFFC0A060, C->ref);
+    drawTextC(FBW / 2, 212, 1, 0xFFF0F0F0, C->goal);
+    sprintf(buf, "PLACE: %s", THEMES[C->theme].place);
+    drawTextC(FBW / 2, 230, 1, 0xFFB0B0B0, buf);
+    if (carryValid) drawTextC(FBW / 2, 248, 1, 0xFF80E080, "YOUR WEAPONS AND MONEY CARRY OVER");
+    if (((int)(t * 2)) & 1) drawTextC(FBW / 2, 296, 2, 0xFFFFE070, "PRESS ENTER TO BEGIN");
 }
 static void renderOptions(float t)
 {
@@ -2703,7 +3219,8 @@ static void loadSave(void)
         int a, b, c, d, e;
         if (fscanf(f, "%d %d %d %d %d", &a, &b, &c, &d, &e) == 5) { optMaster = clampi(a, 0, 10); optMusic = clampi(b, 0, 10); optTurn = clampi(c, 1, 10); optSplit = d & 1; optFull = e & 1; }
         if (fscanf(f, "%d", &a) == 1) optAim = clampi(a, 0, 2);
-        if (fscanf(f, "%d", &a) == 1) chapUnlocked = clampi(a, 1, NCHAP + 1);
+        if (fscanf(f, "%d", &a) == 1) unlockedArr[0] = clampi(a, 1, NBOOKS + 1);
+        if (fscanf(f, "%d", &a) == 1) unlockedArr[1] = clampi(a, 1, NCIRCLES + 1);
         fclose(f);
     }
 }
@@ -2714,7 +3231,7 @@ static void writeSave(void)
     FILE *f = saveDir[0] ? fopen(path, "w") : NULL;
     if (!f) return;
     for (int m = 0; m < NMAPS; m++) fprintf(f, "%d %d\n", bestWave[m], wonMap[m]);
-    fprintf(f, "%d %d %d %d %d\n%d\n%d\n", optMaster, optMusic, optTurn, optSplit, optFull, optAim, chapUnlocked);
+    fprintf(f, "%d %d %d %d %d\n%d\n%d\n%d\n", optMaster, optMusic, optTurn, optSplit, optFull, optAim, unlockedArr[0], unlockedArr[1]);
     fclose(f);
 }
 
@@ -2736,39 +3253,39 @@ enum { NAV_NONE, NAV_UP, NAV_DOWN, NAV_LEFT, NAV_RIGHT, NAV_OK, NAV_BACK };
 static int menuInput(int nav, SDL_Window *win, int *running)
 {
     if (gameState == GS_TITLE) {
-        if (nav == NAV_UP) menuSel = (menuSel + 5) % 6;
-        if (nav == NAV_DOWN) menuSel = (menuSel + 1) % 6;
-        if (nav == NAV_LEFT || nav == NAV_RIGHT) {
-            int d = nav == NAV_RIGHT ? 1 : -1;
-            if (menuSel == 2) menuPlayers = menuPlayers == 1 ? 2 : 1;
-            if (menuSel == 3) curMap = (curMap + NMAPS + d) % NMAPS;
-        }
+        if (nav == NAV_UP) menuSel = (menuSel + 4) % 5;
+        if (nav == NAV_DOWN) menuSel = (menuSel + 1) % 5;
+        if ((nav == NAV_LEFT || nav == NAV_RIGHT) && menuSel == 2) menuPlayers = menuPlayers == 1 ? 2 : 1;
         if (nav == NAV_OK) {
-            if (menuSel == 0) { gameState = GS_CHAPTERS; chapSel = clampi(chapUnlocked - 1, 0, NCHAP - 1); }
-            if (menuSel == 1) { campaign = 0; resetGame(menuPlayers, curMap); gameState = GS_PLAY; paused = 0; }
+            if (menuSel == 0 || menuSel == 1) {
+                setMode(menuSel == 0 ? 1 : 2);
+                carryValid = 0;
+                gameState = GS_CHAPTERS; chapSel = clampi(chapUnlocked - 1, 0, chapCount - 1);
+            }
             if (menuSel == 2) menuPlayers = menuPlayers == 1 ? 2 : 1;
-            if (menuSel == 3) curMap = (curMap + 1) % NMAPS;
-            if (menuSel == 4) { gameState = GS_OPTIONS; optSel = 0; }
-            if (menuSel == 5) *running = 0;
+            if (menuSel == 3) { gameState = GS_OPTIONS; optSel = 0; }
+            if (menuSel == 4) *running = 0;
         }
         if (nav == NAV_BACK) *running = 0;
         if (nav) playV(V_TONE, 0.04f, 900, 900, 0.15f, 0, 0);
         return 1;
     }
     if (gameState == GS_CHAPTERS) {
-        if (nav == NAV_UP) chapSel = (chapSel + NCHAP - 1) % NCHAP;
-        if (nav == NAV_DOWN) chapSel = (chapSel + 1) % NCHAP;
-        if (nav == NAV_OK) { if (chapSel < chapUnlocked) { curChap = chapSel; gameState = GS_STORY; endT = 0; } else sndDeny(); }
+        if (nav == NAV_UP) chapSel = (chapSel + chapCount - 1) % chapCount;
+        if (nav == NAV_DOWN) chapSel = (chapSel + 1) % chapCount;
+        if (nav == NAV_LEFT) chapSel = clampi(chapSel - 10, 0, chapCount - 1);
+        if (nav == NAV_RIGHT) chapSel = clampi(chapSel + 10, 0, chapCount - 1);
+        if (nav == NAV_OK) { if (chapSel < chapUnlocked) { curChap = chapSel; carryValid = 0; gameState = GS_STORY; endT = 0; } else sndDeny(); }
         if (nav == NAV_BACK) gameState = GS_TITLE;
         if (nav) playV(V_TONE, 0.04f, 900, 900, 0.15f, 0, 0);
         return 1;
     }
     if (gameState == GS_STORY) {
         if (nav == NAV_OK) {
-            if (curChap >= NCHAP) gameState = GS_TITLE;
+            if (curChap >= chapCount) gameState = GS_TITLE;
             else { startChapter(curChap, menuPlayers); gameState = GS_PLAY; paused = 0; }
         }
-        if (nav == NAV_BACK) gameState = curChap >= NCHAP ? GS_TITLE : GS_CHAPTERS;
+        if (nav == NAV_BACK) gameState = curChap >= chapCount ? GS_TITLE : GS_CHAPTERS;
         return 1;
     }
     if (gameState == GS_OPTIONS) {
@@ -2794,13 +3311,13 @@ static void afterEnd(void)
 {
     writeSave();
     musicMode = 0;
-    if (gameState == GS_CHAPWIN) { curChap++; gameState = GS_STORY; endT = 0; }
+    if (gameState == GS_CHAPWIN) { curChap++; carryValid = 1; gameState = GS_STORY; endT = 0; }
     else if (campaign && gameState == GS_OVER) gameState = GS_CHAPTERS;
     else gameState = GS_TITLE;
 }
 int main(int argc, char **argv)
 {
-    int autoSecs = 0, autoMap = 0, autoPlayers = 2, validate = 0, windowed = 0, sheet = 0, autoChapter = 0;
+    int autoSecs = 0, autoMap = 0, autoPlayers = 2, validate = 0, windowed = 0, sheet = 0, autoChapter = 0, autoInferno = 0;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--autotest") && i + 1 < argc) { autotest = 1; autoSecs = atoi(argv[++i]); }
         else if (!strcmp(argv[i], "--map") && i + 1 < argc) autoMap = clampi(atoi(argv[++i]), 0, NMAPS - 1);
@@ -2808,11 +3325,13 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--start-wave") && i + 1 < argc) { static int sw; sw = atoi(argv[++i]); wave = sw; }
         else if (!strcmp(argv[i], "--validate")) validate = 1;
         else if (!strcmp(argv[i], "--window")) windowed = 1;
+        else if (!strcmp(argv[i], "--god")) godMode = 1;
         else if (!strcmp(argv[i], "--sprites")) sheet = 1;
-        else if (!strcmp(argv[i], "--chapter") && i + 1 < argc) autoChapter = clampi(atoi(argv[++i]), 1, NCHAP);
+        else if (!strcmp(argv[i], "--chapter") && i + 1 < argc) autoChapter = clampi(atoi(argv[++i]), 1, NBOOKS);
+        else if (!strcmp(argv[i], "--inferno") && i + 1 < argc) { autoChapter = clampi(atoi(argv[++i]), 1, NCIRCLES); autoInferno = 1; }
     }
     int startWaveArg = wave;
-    if (validate) { int bad = validateMaps(); printf(bad ? "MAP PROBLEMS: %d\n" : "ALL MAPS OK\n", bad); return bad ? 1 : 0; }
+    if (validate) { buildBooks(); int bad = validateMaps() + validateGenerated(); printf(bad ? "MAP PROBLEMS: %d\n" : "ALL MAPS OK\n", bad); return bad ? 1 : 0; }
     SDL_SetMainReady();
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) { fprintf(stderr, "SDL: %s\n", SDL_GetError()); return 1; }
     loadSave();
@@ -2832,8 +3351,9 @@ int main(int argc, char **argv)
     srand(12345);
     buildTextures();
     buildSprites();
+    buildBooks();
     if (sheet) {
-        static const int ids[10] = {SP_Z + 0, SP_Z + 9 + 1, SP_Z + 18 + 4, SP_P1, SP_CRAWL, SP_CRAWL + 2, SP_BLOAT, SP_BRUTE, SP_DRAGON + 4, SP_P2};
+        static const int ids[10] = {SP_Z + 0, SP_Z + 9 + 1, SP_Z + 18 + 4, SP_P1, SP_CRAWL, SP_CRAWL + 2, SP_BLOAT, SP_LUCIFER, SP_DRAGON + 4, SP_P2};
         for (int i = 0; i < FBW * FBH; i++) fb[i] = 0xFF302830;
         for (int k = 0; k < 10; k++)
             for (int y = 0; y < SS; y++) for (int x = 0; x < SS; x++) { uint32_t c = spr[ids[k]][y * SS + x]; if (c) fb[(10 + (k / 5) * 170 + y) * FBW + (k % 5) * 128 + x] = c; }
@@ -2841,8 +3361,9 @@ int main(int argc, char **argv)
     }
     if (autotest) {
         if (autoChapter > 0) {
+            setMode(autoInferno ? 2 : 1); carryValid = 0;
             startChapter(autoChapter - 1, autoPlayers); gameState = GS_PLAY;
-            if (startWaveArg > 1) wave = CHAP[curChap].startWave - 1 + startWaveArg - 1;
+            if (startWaveArg > 1) wave = chapTab[curChap].startWave - 1 + startWaveArg - 1;
             for (int i = 0; i < 2; i++) pl[i].points = 20000;
         } else {
             resetGame(autoPlayers, autoMap); gameState = GS_PLAY;
@@ -2933,10 +3454,29 @@ int main(int argc, char **argv)
             }
             char buf[80];
             if (gameState == GS_OVER) {
-                blendRect(0, 0, FBW, FBH, 0xFF300000, (int)clampf(endT * 120, 0, 190));
-                drawTextC(FBW / 2, 100, 4, 0xFFFF3030, "THE HOLD HAS FALLEN");
+                /* "GOD SAVED YOUR SOUL": thick red letters with a cross beneath */
+                blendRect(0, 0, FBW, FBH, 0xFF100000, (int)clampf(endT * 120, 0, 215));
+                const char *l1 = "GOD SAVED", *l2 = "YOUR SOUL";
+                for (int dy = -3; dy <= 3; dy++)
+                    for (int dx = -3; dx <= 3; dx++) {
+                        if (dx * dx + dy * dy > 10) continue;
+                        drawTextBuf(fb, FBW, FBH, FBW / 2 - textW(l1, 6) / 2 + dx, 22 + dy, 6, 0xFF4A0000, l1, 0, 0, 0, FBW, FBH);
+                        drawTextBuf(fb, FBW, FBH, FBW / 2 - textW(l2, 6) / 2 + dx, 72 + dy, 6, 0xFF4A0000, l2, 0, 0, 0, FBW, FBH);
+                    }
+                for (int dx = 0; dx <= 2; dx++) {
+                    drawTextBuf(fb, FBW, FBH, FBW / 2 - textW(l1, 6) / 2 + dx, 22, 6, 0xFFE01818, l1, 0, 0, 0, FBW, FBH);
+                    drawTextBuf(fb, FBW, FBH, FBW / 2 - textW(l2, 6) / 2 + dx, 72, 6, 0xFFE01818, l2, 0, 0, 0, FBW, FBH);
+                }
                 { int sw = chapWave() - 1; if (sw < 0) sw = 0; sprintf(buf, "YOU SURVIVED %d WAVE%s", sw, sw == 1 ? "" : "S"); }
-                drawTextC(FBW / 2, 160, 3, 0xFFF0F0F0, buf);
+                drawTextC(FBW / 2, 126, 2, 0xFFF0F0F0, buf);
+                /* the cross */
+                int cx = FBW / 2, top = 220;
+                fillRect(cx - 12, top - 2, 24, 142, 0xFF2A1A08);
+                fillRect(cx - 44, top + 26, 88, 24, 0xFF2A1A08);
+                fillRect(cx - 9, top, 18, 140, 0xFFE8C860);
+                fillRect(cx - 41, top + 29, 82, 18, 0xFFE8C860);
+                fillRect(cx - 9, top, 5, 140, 0xFFFFF0B0);
+                fillRect(cx - 41, top + 29, 82, 5, 0xFFFFF0B0);
             }
             if (gameState == GS_WIN) {
                 blendRect(0, 0, FBW, FBH, 0xFFFFC080, (int)clampf(endT * 100, 0, 170));
@@ -2946,16 +3486,16 @@ int main(int argc, char **argv)
             }
             if (gameState == GS_CHAPWIN) {
                 blendRect(0, 0, FBW, FBH, 0xFFFFD890, (int)clampf(endT * 100, 0, 160));
-                drawTextC(FBW / 2, 80, 4, 0xFF402010, "CHAPTER COMPLETE");
-                drawTextC(FBW / 2, 130, 2, 0xFF402010, CHAP[curChap].title);
-                drawTextC(FBW / 2, 160, 1, 0xFF402010, CHAP[curChap].win);
+                drawTextC(FBW / 2, 80, 4, 0xFF402010, campaign == 2 ? "YOU FOUND THE WAY" : "BOOK COMPLETE");
+                drawTextC(FBW / 2, 130, 2, 0xFF402010, chapTab[curChap].title);
+                drawTextC(FBW / 2, 160, 1, 0xFF402010, chapTab[curChap].win);
             }
             if (gameState == GS_OVER || gameState == GS_WIN || gameState == GS_CHAPWIN) {
                 for (int i = 0; i < nPlayers; i++) {
                     sprintf(buf, "P%d  %d KILLS  %d REVIVES  $%d", i + 1, pl[i].kills, pl[i].revives, pl[i].points);
-                    drawTextC(FBW / 2, 210 + i * 22, 2, i == 0 ? 0xFFFFA050 : 0xFF60D0FF, buf);
+                    drawTextC(FBW / 2, (gameState == GS_OVER ? 152 + i * 20 : 210 + i * 22), 2, i == 0 ? 0xFFFFA050 : 0xFF60D0FF, buf);
                 }
-                if (endT > 2.5f) drawTextC(FBW / 2, 290, 2, 0xFFC8C8C8, "PRESS ANY KEY");
+                if (endT > 2.5f) { if (gameState == GS_OVER) drawText(12, 340, 1, 0xFFC8C8C8, "PRESS ANY KEY"); else drawTextC(FBW / 2, 290, 2, 0xFFC8C8C8, "PRESS ANY KEY"); }
             }
         }
         renderMs += (double)(SDL_GetPerformanceCounter() - r0) * 1000.0 / (double)freq; frames++;
