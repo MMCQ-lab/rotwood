@@ -198,11 +198,25 @@ static void plainWall(uint32_t *t, uint32_t base, int seed)
 static void gunShape(uint32_t *t, int kind, uint32_t c)
 {
     switch (kind) {
-        case 0: tRect(t, 20, 22, 44, 27, c); tRect(t, 22, 28, 27, 38, c); break;
-        case 1: tRect(t, 8, 22, 56, 25, c); tRect(t, 8, 26, 50, 28, c); tRect(t, 10, 29, 22, 36, c); break;
-        case 2: tRect(t, 14, 22, 50, 28, c); tRect(t, 26, 29, 30, 40, c); tRect(t, 16, 29, 20, 35, c); tRect(t, 50, 24, 56, 26, c); break;
-        case 3: tRect(t, 6, 24, 58, 27, c); tRect(t, 20, 18, 36, 21, c); tRect(t, 6, 28, 18, 35, c); break;
-        case 4: tRect(t, 8, 22, 54, 29, c); tRect(t, 24, 30, 36, 40, c); tRect(t, 54, 24, 60, 26, c); tRect(t, 10, 30, 18, 36, c); tRect(t, 30, 16, 40, 21, c); break;
+        case 0:   /* sling: two cords meeting at a pouch with a stone */
+            for (int i = 0; i < 16; i++) { tRect(t, 16 + i, 16 + i, 16 + i, 16 + i, c); tRect(t, 48 - i, 16 + i, 48 - i, 16 + i, c); }
+            tEllipse(t, 32, 35, 7, 4, c); tEllipse(t, 32, 34, 3, 3, 0xFF2A2420);
+            break;
+        case 1:   /* jawbone with teeth */
+            tRect(t, 10, 30, 50, 34, c); tRect(t, 46, 18, 50, 34, c);
+            for (int i = 0; i < 6; i++) tRect(t, 13 + i * 6, 26, 15 + i * 6, 29, c);
+            break;
+        case 2:   /* bow and arrow */
+            for (int y = 14; y <= 44; y++) { int x = 22 + (int)(((y - 29) * (y - 29)) / 22); tRect(t, x, y, x + 1, y, c); }
+            tRect(t, 22, 14, 22, 44, c); tRect(t, 22, 28, 54, 29, c); tRect(t, 52, 26, 54, 31, c);
+            break;
+        case 3:   /* javelin */
+            for (int i = 0; i < 44; i++) tRect(t, 8 + i, 42 - i * 3 / 4, 9 + i, 42 - i * 3 / 4, c);
+            tRect(t, 50, 8, 56, 14, c);
+            break;
+        case 4:   /* great sword */
+            tRect(t, 30, 8, 34, 36, c); tRect(t, 22, 36, 42, 38, c); tRect(t, 31, 39, 33, 46, c); tEllipse(t, 32, 47, 2, 2, c);
+            break;
     }
 }
 static void signBoard(uint32_t *t, int seed)
@@ -1099,14 +1113,15 @@ static int zActive(int zx, int zy)
 /* ------------------------------------------------------------------ */
 /* Game state                                                         */
 /* ------------------------------------------------------------------ */
-typedef struct { const char *name; int dmg, pellets; float spread, rate; int mag, res, cost, pierce, autoFire; float reload, kick; } Weapon;
+/* Old Testament arsenal. melee weapons need no ammo and hit everything in their arc */
+typedef struct { const char *name; int dmg, pellets; float spread, rate; int mag, res, cost, pierce, autoFire; float reload, kick, range; int melee; } Weapon;
 enum { W_PISTOL, W_SHOTGUN, W_SMG, W_RIFLE, W_LMG, W_COUNT };
 static const Weapon WEAP[W_COUNT] = {
-    {"PEASHOOTER",   45, 1, 0.010f, 0.25f,  8,  64,  300, 0, 0, 1.2f, 0.3f},
-    {"BARN BLASTER", 34, 7, 0.090f, 0.85f,  6,  36,  900, 0, 0, 2.2f, 1.0f},
-    {"CHOPPER",      32, 1, 0.035f, 0.085f, 30, 180, 1200, 0, 1, 1.8f, 0.2f},
-    {"LONGSHOT",    170, 1, 0.004f, 0.55f,  5,  30, 1500, 1, 0, 2.0f, 0.8f},
-    {"HAMMERHEAD",   48, 1, 0.050f, 0.10f, 75, 300, 3000, 0, 1, 3.0f, 0.3f},
+    {"DAVID'S SLING",     55, 1, 0.010f, 0.38f, 10,  80,  300, 0, 0, 1.2f, 0.3f, 40.f, 0},   /* 1 Samuel 17:49 */
+    {"SAMSON'S JAWBONE",  75, 6, 0.320f, 0.55f,  1,   0,  900, 0, 1, 0.0f, 0.7f, 1.9f, 1},   /* Judges 15:15 */
+    {"JONATHAN'S BOW",    80, 1, 0.012f, 0.30f, 12, 120, 1200, 0, 1, 1.6f, 0.3f, 40.f, 0},   /* 2 Samuel 1:22 */
+    {"SAUL'S JAVELIN",   200, 1, 0.004f, 0.75f,  4,  24, 1500, 1, 0, 1.8f, 0.8f, 40.f, 0},   /* 1 Samuel 18:11 */
+    {"GOLIATH'S SWORD",  170, 5, 0.340f, 0.42f,  1,   0, 3000, 0, 1, 0.0f, 0.9f, 2.4f, 1},   /* 1 Samuel 21:9 */
 };
 static int buyWeapon(char c) { return c == 'p' ? W_PISTOL : c == 'a' ? W_SHOTGUN : c == 'c' ? W_SMG : c == 'b' ? W_RIFLE : c == 'l' ? W_LMG : -1; }
 
@@ -1114,11 +1129,11 @@ enum { ST_UP, ST_DOWN, ST_DEAD };
 typedef struct {
     int on, state;
     float x, y, ang, hp, maxHp, regenDelay, bob, recoil, flash, fireCd, reloadT, reloadLen, downT, reviveT, useT, hurtFlash, shake, hitT, killT;
-    int points, weap[3], lvl[3], mag[3], res[3], cur, slots, maxSlots, kills, vest, hands, revives;
+    int points, weap[3], lvl[3], mag[3], res[3], cur, slots, maxSlots, kills, vest, hands, revives, swingCount;
     char msg[48]; float msgT;
 } Player;
 enum { ZT_NORMAL, ZT_CRAWL, ZT_BLOAT, ZT_BRUTE };
-typedef struct { int on, dead, type, variant; float x, y, hp, maxHp, speed, atkCd, anim, deadT, groanT, atkAnim, stun; } Zombie;
+typedef struct { int on, dead, type, variant, swingId; float x, y, hp, maxHp, speed, atkCd, anim, deadT, groanT, atkAnim, stun; } Zombie;
 typedef struct { int on, type; float x, y, t; } Power;
 typedef struct { int on; float x, y, z, vx, vy, vz, life, size; uint32_t col; } Particle;
 #define MAXZ 40
@@ -1137,6 +1152,7 @@ static int gameState = GS_TITLE, paused, menuSel, optSel;
 static float flowTimer;
 #define WIN_WAVE 99
 static void placeTorches(void);
+static int moveOk(float x, float y, int (*pass)(int, int), float r);
 static void addFlash(float x, float y, float r, float g, float b, float rad, float life);
 
 static void addPoints(Player *p, int n) { p->points += goldT > 0.f ? n * 2 : n; }
@@ -1341,26 +1357,30 @@ static void fire(Player *p)
     int s = p->cur, w = p->weap[s];
     const Weapon *W = &WEAP[w];
     if (p->reloadT > 0.f || p->fireCd > 0.f) return;
-    if (p->mag[s] <= 0) {
+    if (!W->melee && p->mag[s] <= 0) {
         if (p->res[s] > 0) { p->reloadLen = p->reloadT = W->reload * (p->hands ? 0.5f : 1.f); playV(V_TONE, 0.08f, 300, 200, 0.2f, 0, 0); }
         else { sndDeny(); p->fireCd = 0.3f; }
         return;
     }
-    p->mag[s]--;
-    p->fireCd = W->rate; p->recoil = 1.f; p->flash = 0.07f; p->shake = clampf(p->shake + W->kick * 0.25f, 0, 0.5f);
-    if (w == W_SHOTGUN) playV(V_NOISE, 0.45f, 0, 0, 0.75f, 0.30f, 0);
-    else if (w == W_RIFLE) playV(V_NOISE, 0.55f, 0, 0, 0.75f, 0.55f, 0);
-    else if (w == W_LMG) playV(V_NOISE, 0.25f, 0, 0, 0.6f, 0.4f, 0);
-    else playV(V_NOISE, 0.22f, 0, 0, 0.55f, 0.50f, 0);
+    if (!W->melee) p->mag[s]--;
+    p->fireCd = W->rate; p->recoil = 1.f; p->shake = clampf(p->shake + W->kick * 0.25f, 0, 0.5f);
+    switch (w) {
+        case W_PISTOL:  playV(V_NOISE, 0.20f, 0, 0, 0.35f, 0.06f, 0); playV(V_TONE, 0.07f, 220, 120, 0.15f, 0, 0.05f); break; /* sling whirl and release */
+        case W_SMG:     playV(V_TONE, 0.14f, 340, 160, 0.35f, 0, 0); playV(V_NOISE, 0.08f, 0, 0, 0.2f, 0.3f, 0); break;     /* bowstring twang */
+        case W_RIFLE:   playV(V_NOISE, 0.35f, 0, 0, 0.55f, 0.04f, 0); playV(V_TONE, 0.1f, 160, 90, 0.2f, 0, 0); break;     /* heavy throw */
+        default:        playV(V_NOISE, 0.22f, 0, 0, 0.5f, 0.035f, 0); break;                                                /* swing */
+    }
     if (p->lvl[s]) playV(V_TONE, 0.08f, 900, 300, 0.12f, 0, 0);
     float dmgBase = wDmg(p, s);
     float baseAng = p->ang, ad = 0.f;
-    if (optAim && aimTarget(p, optAim == 2 ? 0.20f : 0.09f, &ad)) baseAng += ad;     /* shots bend onto the target */
+    if (optAim && aimTarget(p, W->melee ? 0.5f : (optAim == 2 ? 0.20f : 0.09f), &ad)) baseAng += ad;   /* shots bend onto the target */
+    int struck = 0;
     for (int pe = 0; pe < W->pellets; pe++) {
-        float a = baseAng + (frand() * 2.f - 1.f) * W->spread;
+        float a = W->melee ? baseAng + (pe - (W->pellets - 1) * 0.5f) * (2.f * W->spread / (W->pellets - 1)) : baseAng + (frand() * 2.f - 1.f) * W->spread;
         float dx = cosf(a), dy = sinf(a);
         float wallD = castDist(p->x, p->y, dx, dy);
-        float minT = 0.f;
+        if (wallD > W->range) wallD = W->range;
+        float minT = 0.f, endT = wallD;
         for (int pass = 0; pass < (W->pierce ? 4 : 1); pass++) {
             Zombie *hit = NULL; float bestT = wallD;
             for (int i = 0; i < MAXZ; i++) {
@@ -1370,26 +1390,47 @@ static void fire(Player *p)
                 float t = rx * dx + ry * dy;
                 if (t <= minT || t >= bestT) continue;
                 float px = rx - dx * t, py = ry - dy * t;
-                float rad = z->type == ZT_BRUTE ? 0.45f : z->type == ZT_BLOAT ? 0.42f : 0.33f;
+                float rad = (z->type == ZT_BRUTE ? 0.45f : z->type == ZT_BLOAT ? 0.42f : 0.33f) + (W->melee ? 0.15f : 0.f);
                 if (px * px + py * py < rad * rad) { bestT = t; hit = z; }
             }
             if (!hit) {
-                spawnParts(p->x + dx * (wallD - 0.05f), p->y + dy * (wallD - 0.05f), 0.5f, 2, 0xFFB0A890, 0.6f, 0.03f);
+                if (!W->melee) spawnParts(p->x + dx * (wallD - 0.05f), p->y + dy * (wallD - 0.05f), 0.5f, 2, 0xFFB0A890, 0.6f, 0.03f);
                 break;
+            }
+            endT = bestT;
+            if (W->melee) {
+                /* one blow lands on each demon at most once per swing */
+                int token = p->swingCount * 2 + (int)(p - pl) + 1;
+
+                if (hit->swingId == token) { minT = bestT + 0.01f; continue; }
+                hit->swingId = token;
             }
             float dmg = dmgBase * (bestT > 8.f ? 0.7f : 1.f);
             hit->hp -= dmg;
-            hit->stun = hit->type == ZT_BRUTE ? 0.f : 0.12f;
+            hit->stun = hit->type == ZT_BRUTE ? 0.f : (W->melee ? 0.3f : 0.12f);
             addPoints(p, 10);
             p->hitT = 0.12f;
-            playV(V_NOISE, 0.06f, 0, 0, 0.25f, 0.15f, 0);
-            spawnParts(hit->x - dx * 0.2f, hit->y - dy * 0.2f, hit->type == ZT_CRAWL ? 0.2f : 0.65f, 4, 0xFF8A1414, 1.2f, 0.05f);
+            struck = 1;
+            spawnParts(hit->x - dx * 0.2f, hit->y - dy * 0.2f, hit->type == ZT_CRAWL ? 0.2f : 0.65f, W->melee ? 8 : 4, 0xFF8A1414, 1.2f, 0.05f);
             if (hit->hp <= 0.f) killZombie(hit, p);
-            else if (hit->type != ZT_BRUTE) { hit->x += dx * 0.05f; hit->y += dy * 0.05f; }
+            else if (hit->type != ZT_BRUTE) { float kb = W->melee ? 0.35f : 0.05f; if (moveOk(hit->x + dx * kb, hit->y + dy * kb, zombiePass, 0.2f)) { hit->x += dx * kb; hit->y += dy * kb; } }
             minT = bestT + 0.01f;
         }
+        /* show the stone, arrow or javelin in flight */
+        if (!W->melee) {
+            for (int i = 0; i < MAXPART; i++) if (!parts[i].on) {
+                Particle *q = &parts[i];
+                q->on = 1; q->x = p->x + dx * 0.4f; q->y = p->y + dy * 0.4f; q->z = 0.45f;
+                q->vx = dx * 22.f; q->vy = dy * 22.f; q->vz = 2.f; q->life = endT / 22.f;
+                q->size = w == W_RIFLE ? 0.07f : 0.045f;
+                q->col = w == W_PISTOL ? 0xFF8A8A84 : w == W_SMG ? 0xFF6A4A28 : 0xFF9A7A50;
+                break;
+            }
+        }
     }
-    if (p->mag[s] == 0 && p->res[s] > 0) p->reloadLen = p->reloadT = W->reload * (p->hands ? 0.5f : 1.f);
+    if (W->melee) { p->swingCount++; if (struck) playV(V_NOISE, 0.12f, 0, 0, 0.6f, 0.02f, 0); }
+    else if (struck) playV(V_NOISE, 0.06f, 0, 0, 0.3f, 0.15f, 0);
+    if (!W->melee && p->mag[s] == 0 && p->res[s] > 0) p->reloadLen = p->reloadT = W->reload * (p->hands ? 0.5f : 1.f);
 }
 
 static int frontCell(Player *p, int *cx, int *cy)
@@ -1435,7 +1476,7 @@ static void tryUse(Player *p, int held, float dt)
         for (int k = 0; k < p->slots; k++) if (p->weap[k] == w) slot = k;
         if (slot >= 0) {
             int cost = WEAP[w].cost / 2;
-            if (p->points >= cost && (p->res[slot] < wRes(p, slot) || p->mag[slot] < wMag(p, slot))) {
+            if (!WEAP[w].melee && p->points >= cost && (p->res[slot] < wRes(p, slot) || p->mag[slot] < wMag(p, slot))) {
                 p->points -= cost; p->res[slot] = wRes(p, slot); p->mag[slot] = wMag(p, slot); sndBuy(); say(p, "AMMO REFILLED");
             } else sndDeny();
         } else if (p->points >= WEAP[w].cost) {
@@ -1486,7 +1527,7 @@ static void promptFor(Player *p, char *out)
     else if (buyWeapon(c) >= 0) {
         int w = buyWeapon(c), own = 0;
         for (int k = 0; k < p->slots; k++) if (p->weap[k] == w) own = 1;
-        if (own) sprintf(out, "USE: AMMO $%d", WEAP[w].cost / 2);
+        if (own) { if (WEAP[w].melee) strcpy(out, "ALREADY CARRIED"); else sprintf(out, "USE: AMMO $%d", WEAP[w].cost / 2); }
         else sprintf(out, "USE: %s $%d", WEAP[w].name, WEAP[w].cost);
     } else if (c == 'T') {
         if (p->lvl[s] >= 3) strcpy(out, "WEAPON FULLY UPGRADED");
@@ -2003,45 +2044,52 @@ static void drawWeapon(Player *p, int vx, int vy, int vw, int vh)
     float fx = gW * 0.56f + bobx, fy = gH * 0.70f + boby + drop;
     float rec = clampf(p->recoil, 0, 1) * 7.f;
     float ax = fx - nx, ay = fy - ny, L = sqrtf(ax * ax + ay * ay);
-    nx -= ax / L * rec; ny -= ay / L * rec; fx -= ax / L * rec; fy -= ay / L * rec;
+    if (WEAP[w].melee) {                                             /* melee: a sideways sweep */
+        float sw = clampf(p->recoil, 0, 1);
+        nx -= sw * gW * 0.12f; fx -= sw * gW * 0.38f; fy += sw * gH * 0.12f;
+    } else { nx -= ax / L * rec; ny -= ay / L * rec; fx -= ax / L * rec; fy -= ay / L * rec; }
     gNx = nx; gNy = ny; gAx = fx - nx; gAy = fy - ny; gL = sqrtf(gAx * gAx + gAy * gAy);
     gPx = -gAy / gL; gPy = gAx / gL;
     if (gPy > 0) { gPx = -gPx; gPy = -gPy; }                          /* +perp points up = lit side */
-    uint32_t metal = 0xFF5A5E68, dark = 0xFF2A2C32, wood = 0xFF8A5A30;
+    uint32_t bronze = 0xFFB08040, steel = 0xFFC4C8D0, leather = 0xFF5A3418, bone = 0xFFE0D6BC, wood = 0xFF8A5A30;
     uint32_t skin = p == &pl[1] ? 0xFFB8C2D0 : 0xFFD8A838;                          /* archangel gauntlet */
     uint32_t sleeve = p == &pl[1] ? 0xFF2850B0 : 0xFFA82020;                        /* cloak sleeve */
     uint32_t glow = p == &pl[1] ? EM(0xFF30D8FF) : EM(0xFFFF8A20);
-    if (p->lvl[p->cur]) { metal = mixC(metal, 0xFF7070FF, 50 * p->lvl[p->cur]); dark = mixC(dark, 0xFF4040C0, 40 * p->lvl[p->cur]); }
-    GPart parts[10]; int n = 0;
+    if (p->lvl[p->cur]) {                                                           /* blessed upgrades shine */
+        int l = p->lvl[p->cur];
+        bronze = mixC(bronze, 0xFFFFE890, 50 * l); steel = mixC(steel, 0xFFE0F0FF, 50 * l); bone = mixC(bone, 0xFFFFF8E0, 50 * l);
+    }
+    GPart parts[40]; int n = 0;
     switch (w) {
-        case W_PISTOL:
-            parts[n++] = (GPart){0.20f, 0.70f, 5.f, 5.f, 0.f, dark};
-            parts[n++] = (GPart){0.15f, 1.00f, 6.f, 0.f, 0.f, metal};
-            parts[n++] = (GPart){0.90f, 0.98f, 1.5f, -6.f, 0.f, dark};
+        case W_PISTOL:   /* David's sling: two cords and a leather pouch holding a stone */
+            parts[n++] = (GPart){0.15f, 0.55f, 0.8f, -2.f, -2.5f, leather};
+            parts[n++] = (GPart){0.15f, 0.55f, 0.8f, -2.f, 2.5f, leather};
+            parts[n++] = (GPart){0.50f, 0.70f, 4.5f, -1.f, 0.f, 0xFF6A4020};
+            parts[n++] = (GPart){0.55f, 0.66f, 3.f, -3.f, 0.f, 0xFF8A8A84};
             break;
-        case W_SHOTGUN:
-            parts[n++] = (GPart){0.00f, 0.35f, 9.f, 2.f, 0.f, dark};
-            parts[n++] = (GPart){0.10f, 1.00f, 3.5f, -1.f, -3.5f, metal};
-            parts[n++] = (GPart){0.10f, 1.00f, 3.5f, -1.f, 3.5f, metal};
-            parts[n++] = (GPart){0.42f, 0.75f, 7.f, 5.f, 0.f, wood};
+        case W_SHOTGUN:  /* Samson's jawbone */
+            parts[n++] = (GPart){0.00f, 0.45f, 4.f, 0.f, 0.f, bone};
+            parts[n++] = (GPart){0.40f, 0.96f, 5.5f, -1.f, 0.f, bone};
+            for (int k = 0; k < 6; k++) parts[n++] = (GPart){0.48f + k * 0.08f, 0.52f + k * 0.08f, 1.4f, -6.5f, 0.f, 0xFFF4EEDC};
             break;
-        case W_SMG:
-            parts[n++] = (GPart){0.30f, 0.46f, 3.5f, 15.f, 0.f, dark};
-            parts[n++] = (GPart){0.00f, 0.68f, 8.f, 0.f, 0.f, metal};
-            parts[n++] = (GPart){0.62f, 1.00f, 2.5f, -1.f, 0.f, dark};
-            parts[n++] = (GPart){0.50f, 0.60f, 1.5f, -8.f, 0.f, dark};
+        case W_SMG:      /* Jonathan's bow: curved stave, string, nocked arrow */
+            for (int k = -6; k <= 6; k++) parts[n++] = (GPart){0.52f, 0.58f, 1.8f, k * 4.f, -abs(k) * 0.7f, wood};
+            for (int k = -6; k <= 6; k++) if (k) parts[n++] = (GPart){0.40f + abs(k) * 0.02f, 0.42f + abs(k) * 0.02f, 0.5f, k * 4.f, 0.f, 0xFFE8E0C8};
+            parts[n++] = (GPart){0.12f, 1.00f, 1.0f, 0.f, 0.f, 0xFF7A5A34};
+            parts[n++] = (GPart){0.95f, 1.06f, 2.6f, 0.f, 0.f, bronze};
+            parts[n++] = (GPart){0.12f, 0.22f, 3.f, -1.f, 0.f, 0xFFB02818};
             break;
-        case W_RIFLE:
-            parts[n++] = (GPart){0.00f, 0.50f, 7.f, 2.f, 0.f, wood};
-            parts[n++] = (GPart){0.35f, 1.05f, 2.5f, 0.f, 0.f, metal};
-            parts[n++] = (GPart){0.22f, 0.62f, 4.f, -9.f, 0.f, dark};
-            parts[n++] = (GPart){0.60f, 0.63f, 5.f, -9.f, 0.f, metal};
+        case W_RIFLE:    /* Saul's javelin */
+            parts[n++] = (GPart){-0.30f, 0.88f, 1.8f, 0.f, 0.f, wood};
+            parts[n++] = (GPart){0.82f, 0.87f, 2.4f, 0.f, 0.f, leather};
+            parts[n++] = (GPart){0.86f, 1.10f, 3.6f, 0.f, 0.f, bronze};
             break;
-        case W_LMG:
-            parts[n++] = (GPart){0.18f, 0.42f, 9.f, 12.f, -3.f, 0xFF6A5A30};
-            parts[n++] = (GPart){0.00f, 0.62f, 10.f, 0.f, 0.f, metal};
-            parts[n++] = (GPart){0.55f, 1.00f, 3.5f, 0.f, 0.f, dark};
-            parts[n++] = (GPart){0.34f, 0.46f, 2.f, -11.f, 0.f, dark};
+        case W_LMG:      /* the sword of Goliath */
+            parts[n++] = (GPart){-0.05f, 0.02f, 3.5f, 0.f, 0.f, bronze};
+            parts[n++] = (GPart){0.00f, 0.20f, 2.4f, 0.f, 0.f, leather};
+            parts[n++] = (GPart){0.20f, 0.25f, 9.f, 0.f, 0.f, bronze};
+            parts[n++] = (GPart){0.25f, 1.08f, 3.6f, 0.f, 0.f, steel};
+            parts[n++] = (GPart){0.30f, 0.95f, 0.8f, 0.f, 0.f, scaleRGB(steel, 0.7f)};
             break;
     }
     parts[n++] = (GPart){0.02f, 0.22f, 6.f, 6.f, 0.f, skin};          /* gripping hand */
@@ -2304,10 +2352,11 @@ static void renderView(int pi, int vx, int vy, int vw, int vh)
         int s = p->cur;
         char nm[40];
         if (p->lvl[s]) sprintf(nm, "%s +%d", WEAP[p->weap[s]].name, p->lvl[s]); else strcpy(nm, WEAP[p->weap[s]].name);
-        sprintf(buf, "%d / %d", p->mag[s], p->res[s]);
-        drawText(vx + vw - 10 - textW(buf, big), vy + vh - 10 - 7 * big, big, p->mag[s] ? 0xFFF0F0F0 : 0xFFFF4040, buf);
-        drawText(vx + vw - 10 - textW(nm, 2), vy + vh - 16 - 7 * big - 14, 2, p->lvl[s] ? 0xFFA0A0FF : 0xFFC8C8C8, nm);
+        if (WEAP[p->weap[s]].melee) strcpy(buf, "MELEE"); else sprintf(buf, "%d / %d", p->mag[s], p->res[s]);
+        drawText(vx + vw - 10 - textW(buf, big), vy + vh - 10 - 7 * big, big, (p->mag[s] || WEAP[p->weap[s]].melee) ? 0xFFF0F0F0 : 0xFFFF4040, buf);
+        { int ns = textW(nm, 2) > vw - 120 ? 1 : 2; drawText(vx + vw - 10 - textW(nm, ns), vy + vh - 16 - 7 * big - 7 * ns, ns, p->lvl[s] ? 0xFFFFE890 : 0xFFC8C8C8, nm); }
         if (p->reloadT > 0) drawTextC(vx + vw / 2, vy + vh / 2 + 18, 2, 0xFFF0F0F0, "RELOADING");
+        else if (WEAP[p->weap[s]].melee) { }
         else if (p->mag[s] == 0 && p->res[s] == 0) { if ((SDL_GetTicks() / 300) & 1) drawTextC(vx + vw / 2, vy + vh / 2 + 18, 2, 0xFFFF4040, "NO AMMO"); }
         else if (p->mag[s] <= wMag(p, s) / 4 && ((SDL_GetTicks() / 300) & 1)) drawTextC(vx + vw / 2, vy + vh / 2 + 18, 2, 0xFFFFC040, p->mag[s] == 0 ? "RELOAD" : "LOW AMMO");
         char pr[64]; promptFor(p, pr);

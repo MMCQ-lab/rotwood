@@ -17,7 +17,7 @@ new rooms and weapons drawn in chalk on the walls, and revive your partner when 
 Title screen: press **1** or **2** for the number of players, or A on a gamepad. **Esc** pauses (Q quits to the title),
 **F11** toggles fullscreen and **F12** saves a screenshot.
 
-Weapons: Peashooter (start), Barn Blaster $900, Chopper $1200, Longshot $1500. Buying a weapon you already own refills its ammo for half price.
+Weapons (Old Testament): **David's Sling** (start, 1 Samuel 17:49), **Samson's Jawbone** $900 (melee, Judges 15:15), **Jonathan's Bow** $1200 (2 Samuel 1:22), **Saul's Javelin** $1500 (pierces, 1 Samuel 18:11), **Goliath's Sword** $3000 (melee, 1 Samuel 21:9). Melee weapons need no ammo. Buying a ranged weapon you already own refills its ammo for half price.
 Power-ups: **A** Ammo Crate, **F** Firestorm (clears the wave), **$** Gold Rush (double pay for 30 s).
 
 ## Build and run on the Pi
