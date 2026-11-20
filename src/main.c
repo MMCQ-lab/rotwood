@@ -1961,7 +1961,7 @@ static void fire(Player *p)
     if (p->lvl[s]) playV(V_TONE, 0.08f, 900, 300, 0.12f, 0, 0);
     float dmgBase = wDmg(p, s);
     float baseAng = p->ang, ad = 0.f;
-    if (optAim && aimTarget(p, W->melee ? 0.5f : (optAim == 2 ? 0.20f : 0.09f), &ad)) baseAng += ad;   /* shots bend onto the target */
+    if (optAim && aimTarget(p, W->melee ? 0.5f : (optAim == 2 ? 0.07f : 0.035f), &ad)) baseAng += ad;   /* near misses bend onto the target */
     int struck = 0;
     for (int pe = 0; pe < W->pellets; pe++) {
         float a = W->melee ? baseAng + (pe - (W->pellets - 1) * 0.5f) * (2.f * W->spread / (W->pellets - 1)) : baseAng + (frand() * 2.f - 1.f) * W->spread;
@@ -2240,8 +2240,13 @@ static void updatePlayer(int i, float dt)
     Ctl c = autotest ? botCtl(i) : readCtl(i);
     p->ang += c.turn * (1.2f + optTurn * 0.28f) * dt;
     if (optAim && !autotest) {                         /* gentle pull toward the nearest demon in view */
-        float ad = 0.f, rate = optAim == 2 ? 2.4f : 1.0f;
-        if (aimTarget(p, optAim == 2 ? 0.32f : 0.16f, &ad)) p->ang += clampf(ad, -rate * dt, rate * dt);
+        /* a light pull toward a demon near the crosshair. It never fights you: turning the other way switches it off,
+           and it is strongest when you are not turning at all */
+        float ad = 0.f, rate = optAim == 2 ? 0.9f : 0.45f;
+        if (aimTarget(p, optAim == 2 ? 0.20f : 0.12f, &ad) && !(c.turn != 0 && (c.turn > 0) != (ad > 0))) {
+            if (c.turn != 0) rate *= 0.5f;
+            p->ang += clampf(ad * 0.6f, -rate * dt, rate * dt);
+        }
     }
     float dx = cosf(p->ang), dy = sinf(p->ang);
     char under = cellC((int)p->x, (int)p->y);

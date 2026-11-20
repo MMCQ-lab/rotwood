@@ -50,7 +50,7 @@ Upgrade bench (each gun up to +3), electric fence trap ($1000), and a supply she
 `--validate` checks all maps. `--autotest SECS --map N --players 1|2 --start-wave W` runs bots and a purchase test and saves screenshots. `--sprites` saves a sprite sheet.
 
 ## Aim assist
-Made for keyboards and gamepads (there's no mouse aiming). Your view is pulled gently toward the nearest demon in front of you, and shots bend onto it. Set it to Off, Low or High (the default) in Options.
+Made for keyboards and gamepads (there's no mouse aiming). A light pull nudges your view toward a demon near the crosshair, but it switches off whenever you turn the other way, so you stay in control. Shots that only just miss bend onto the target. Set it to Off, Low or High (the default) in Options.
 
 
 ## Wave sizes
