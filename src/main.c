@@ -399,31 +399,6 @@ static void buildDeathFrames(int base)
     sTransform(spr[base + 7], spr[base + 0], -0.9f, 0.9f, 64, 125, 88, 126);
     sTransform(spr[base + 8], spr[base + 0], -1.48f, 0.82f, 64, 125, 112, 124);
 }
-/* player in an armoured cyber suit; glow is the player's colour */
-static void personFrame(uint32_t glow)
-{
-    uint32_t armor = 0xFF3A3E4A, plate = 0xFF646A78, under = 0xFF1C1E24;
-    sLimb(56, 80, 55, 121, 9, 7, armor, 0); sLimb(72, 80, 73, 121, 9, 7, armor, 0);
-    sBall(55, 101, 6, 5, plate, 0); sBall(73, 101, 6, 5, plate, 0);                 /* knee plates */
-    sBall(54, 123, 8, 4, under, 0); sBall(74, 123, 8, 4, under, 0);                 /* boots */
-    sLimb(50, 86, 50, 116, 1, 1, glow, 0); sLimb(78, 86, 78, 116, 1, 1, glow, 0);    /* leg light strips */
-    sBall(64, 60, 23, 26, armor, 0);
-    sBall(64, 52, 17, 14, plate, 0);                                                /* chest plate */
-    sBall(64, 55, 4, 4, glow, 0); sBall(64, 55, 2, 2, 0xFFFFFFFF, 0);              /* power core */
-    sLimb(48, 68, 80, 68, 1, 1, glow, 0); sLimb(52, 76, 76, 76, 1, 1, scaleRGB(glow, 0.7f), 0);
-    sBall(41, 40, 10, 8, plate, 0); sBall(87, 40, 10, 8, plate, 0);                 /* shoulder pads */
-    sLimb(41, 44, 39, 66, 7, 6, armor, 0); sLimb(87, 44, 89, 66, 7, 6, armor, 0);
-    sLimb(36, 46, 36, 62, 1, 1, glow, 0); sLimb(92, 46, 92, 62, 1, 1, glow, 0);
-    sBall(54, 70, 20, 4, 0xFF202228, 0);                                           /* rifle held across */
-    sLimb(36, 70, 74, 70, 1, 1, glow, 0);
-    sBall(41, 70, 7, 6, plate, 0); sBall(87, 70, 7, 6, plate, 0);                  /* gauntlets */
-    sLimb(64, 30, 64, 38, 7, 7, under, 0);
-    sBall(64, 20, 15, 16, armor, 0);                                               /* helmet */
-    sBall(64, 22, 12, 5, scaleRGB(glow, 0.55f), 0); sBall(64, 21, 10, 3, glow, 0); /* glowing visor */
-    sLimb(56, 20, 72, 20, 0.6f, 0.6f, 0xFFFFFFFF, 0);
-    sLimb(78, 14, 84, 0, 1.2f, 0.8f, plate, 0); sBall(84, 1, 2, 2, glow, 0);       /* antenna */
-    sOutline(cur);
-}
 static void powerFrame(uint32_t c, const char *glyph)
 {
     sBall(64, 84, 30, 30, scaleRGB(c, 0.5f), 0);
@@ -490,66 +465,141 @@ static void locustFrame(LocLook *L, int f, int seed)
     for (int i = -2; i <= 2; i++) sLimb(64 + i * 5, 19, 64 + i * 5, 12 - (i == 0 ? 3 : 0), 1.6f, 0.8f, gold, 0);
     sOutline(cur);
 }
+/* flat-shaded triangle and quad: hard angular planes instead of round blobs */
+static void sTri(float x0, float y0, float x1, float y1, float x2, float y2, uint32_t col, float f)
+{
+    float area = (x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0);
+    if (fabsf(area) < 0.01f) return;
+    int minx = (int)floorf(fminf(x0, fminf(x1, x2))), maxx = (int)ceilf(fmaxf(x0, fmaxf(x1, x2)));
+    int miny = (int)floorf(fminf(y0, fminf(y1, y2))), maxy = (int)ceilf(fmaxf(y0, fmaxf(y1, y2)));
+    uint32_t c = scaleRGB(col, f);
+    for (int y = miny; y <= maxy; y++)
+        for (int x = minx; x <= maxx; x++) {
+            float px = x + 0.5f, py = y + 0.5f;
+            float w0 = (x1 - px) * (y2 - py) - (x2 - px) * (y1 - py);
+            float w1 = (x2 - px) * (y0 - py) - (x0 - px) * (y2 - py);
+            float w2 = (x0 - px) * (y1 - py) - (x1 - px) * (y0 - py);
+            if ((area > 0 && w0 >= 0 && w1 >= 0 && w2 >= 0) || (area < 0 && w0 <= 0 && w1 <= 0 && w2 <= 0)) sPix(x, y, c);
+        }
+}
+static void sQuad(float ax, float ay, float bx, float by, float cx, float cy, float dx, float dy, uint32_t col, float f)
+{
+    sTri(ax, ay, bx, by, cx, cy, col, f);
+    sTri(ax, ay, cx, cy, dx, dy, col, f);
+}
+static void sClaws(float x, float y, float dir, uint32_t col)
+{
+    for (int k = -1; k <= 1; k++) sTri(x + k * 4 - 1.5f, y, x + k * 4 + 1.5f, y, x + k * 5 + dir * 2, y + 8, col, 1.1f);
+}
+/* unclean spirits "like frogs" (Revelation 16:13): a spiked, horned toad-demon */
 static void frogFrame(int f)
 {
-    float up = f == 1 ? -12.f : 0.f;
-    uint32_t sk = 0xFF2E4A2A, belly = 0xFF8A9A5A, dark = 0xFF101810;
-    for (int i = 0; i < 6; i++) sBall(30 + hash2(i, f, 3) % 70, 66 + hash2(i, f, 4) % 30 + up, 5, 5, 0xFF4A4448, 0);
-    sLimb(36, 108 + up, 18, 121, 7, 5, sk, 61); sBall(16, 123, 8, 3, sk, 61);
-    sLimb(92, 108 + up, 110, 121, 7, 5, sk, 61); sBall(112, 123, 8, 3, sk, 61);
-    sBall(64, 102 + up, 32, 20, sk, 61);
-    sBall(64, 111 + up, 20, 9, belly, 62);
-    for (int i = 0; i < 8; i++) sBall(40 + hash2(i, 7, 5) % 48, 90 + hash2(i, 8, 5) % 12 + up, 2, 2, 0xFF4A6A3A, 0);
-    sBall(46, 86 + up, 9, 9, sk, 61); sBall(82, 86 + up, 9, 9, sk, 61);
-    sBall(46, 85 + up, 6, 6, 0xFFE8C030, 0); sBall(82, 85 + up, 6, 6, 0xFFE8C030, 0);
-    sLimb(46, 81 + up, 46, 89 + up, 1, 1, dark, 0); sLimb(82, 81 + up, 82, 89 + up, 1, 1, dark, 0);
-    if (f == 2) { sBall(64, 104, 20, 8, 0xFF8A1A1A, 0); sLimb(64, 104, 64, 124, 3, 2, 0xFFD04060, 0); }
-    else sLimb(42, 100 + up, 86, 100 + up, 0.8f, 0.8f, dark, 0);
-    sLimb(48, 112 + up, 44, 123, 4, 3, sk, 61); sLimb(80, 112 + up, 84, 123, 4, 3, sk, 61);
+    float up = f == 1 ? -10.f : 0.f;
+    uint32_t sk = 0xFF34502A, dark = 0xFF141E10, spike = 0xFF1C2814, eye = 0xFFE8E030, bone = 0xFFD8CCB0;
+    for (int i = 0; i < 5; i++) sTri(30 + hash2(i, f, 3) % 64, 70 + hash2(i, f, 4) % 20 + up, 36 + hash2(i, f, 3) % 64, 60 + hash2(i, f, 4) % 20 + up, 42 + hash2(i, f, 3) % 64, 72 + hash2(i, f, 4) % 20 + up, 0xFF4A4448, 1.f);
+    /* haunches and back legs */
+    sTri(14, 124, 40, 94 + up, 54, 118, sk, 0.75f); sTri(114, 124, 88, 94 + up, 74, 118, sk, 0.7f);
+    sTri(8, 125, 26, 118, 22, 126, dark, 1.f); sTri(120, 125, 102, 118, 106, 126, dark, 1.f);
+    /* wedge-shaped body */
+    sQuad(26, 100 + up, 102, 100 + up, 92, 121, 36, 121, sk, 0.95f);
+    sTri(26, 100 + up, 64, 74 + up, 64, 100 + up, sk, 1.25f);
+    sTri(64, 74 + up, 102, 100 + up, 64, 100 + up, sk, 0.85f);
+    /* spines along the ridge */
+    for (int i = -3; i <= 3; i++) {
+        float x = 64 + i * 9.f, b = 84 + up + abs(i) * 4.f;
+        sTri(x - 4, b, x + 4, b, x + i * 1.5f, b - 14 + abs(i) * 2.f, spike, 1.f);
+    }
+    /* curled horns */
+    sLimb(52, 80 + up, 40, 70 + up, 3, 2, bone, 0); sLimb(40, 70 + up, 36, 60 + up, 2, 1, bone, 0);
+    sLimb(76, 80 + up, 88, 70 + up, 3, 2, bone, 0); sLimb(88, 70 + up, 92, 60 + up, 2, 1, bone, 0);
+    /* slit eyes */
+    sTri(38, 88 + up, 54, 92 + up, 42, 95 + up, eye, 1.f); sTri(90, 88 + up, 74, 92 + up, 86, 95 + up, eye, 1.f);
+    sPix(45, 92 + (int)up, dark); sPix(83, 92 + (int)up, dark);
+    /* wide fanged mouth */
+    if (f == 2) {
+        sQuad(32, 100, 96, 100, 86, 116, 42, 116, 0xFF7A1010, 1.f);
+        sLimb(64, 108, 64, 126, 3, 2, 0xFFD04060, 0);
+    } else sQuad(34, 100 + up, 94, 100 + up, 88, 105 + up, 40, 105 + up, dark, 1.f);
+    for (int k = 0; k < 7; k++) sTri(38 + k * 8, 100 + up, 42 + k * 8, 100 + up, 40 + k * 8, 106 + up + (k == 1 || k == 5 ? 4 : 0), bone, 1.f);
+    /* front legs with claws */
+    sLimb(46, 112 + up, 40, 121, 4, 3, sk, 0); sClaws(40, 119, -1.f, dark);
+    sLimb(82, 112 + up, 88, 121, 4, 3, sk, 0); sClaws(88, 119, 1.f, dark);
     sOutline(cur);
 }
-static void legionFrame(int f)
+/* "the dragon fought and his angels... and his angels were cast out with him" (Revelation 12:7-9):
+   a fallen angel, in the manner of the old paintings of Saint Michael casting down the devil */
+static void fallenFrame(int f)
 {
-    uint32_t flesh = 0xFF7A2A2A;
-    float lo = f == 1 ? 4.f : (f == 0 ? -4.f : 0.f);
-    sLimb(50, 100, 48, 123 + lo * 0.5f, 9, 7, 0xFF4A1A1A, 81); sLimb(78, 100, 80, 123 - lo * 0.5f, 9, 7, 0xFF4A1A1A, 81);
-    for (int i = 0; i < 6; i++) {
-        float a = (f == 2 ? -2.9f : -3.4f) + i * (f == 2 ? 0.55f : 1.05f) + lo * 0.02f;
-        float bx = 64 + cosf(a) * 34, by = 70 + sinf(a) * 36, tx = 64 + cosf(a) * 56, ty = 70 + sinf(a) * 52;
-        if (ty > 120) ty = 120;
-        if (tx < 6) tx = 6;
-        if (tx > 122) tx = 122;
-        if (ty < 6) ty = 6;
-        sLimb(bx, by, tx, ty, 5, 3, scaleRGB(flesh, 0.85f), 81);
-        sBall(tx, ty, 4, 4, 0xFFC0A090, 0);
+    float flap = f == 1 ? 9.f : 0.f, st = f == 1 ? 3.f : -3.f;
+    uint32_t wing = 0xFF3E1612, bone = 0xFF1A0806, skin = 0xFF8C2618, fur = 0xFF2A1410, horn = 0xFFD8CCB0, eye = 0xFFFFD020, dark = 0xFF200806;
+    /* bat wings */
+    for (int s = -1; s <= 1; s += 2) {
+        float Sx = 64 + s * 16, Sy = 44, Ex = 64 + s * 50, Ey = 8 + flap;
+        float F1x = 64 + s * 63, F1y = 34 + flap, F2x = 64 + s * 58, F2y = 58 + flap * 0.5f, F3x = 64 + s * 38, F3y = 74;
+        sTri(Sx, Sy, Ex, Ey, F1x, F1y, wing, s < 0 ? 1.15f : 0.95f);
+        sTri(Sx, Sy, F1x, F1y, F2x, F2y, wing, s < 0 ? 0.95f : 0.8f);
+        sTri(Sx, Sy, F2x, F2y, F3x, F3y, wing, s < 0 ? 1.05f : 0.85f);
+        sLimb(Sx, Sy, Ex, Ey, 2.2f, 1.5f, bone, 0);
+        sLimb(Ex, Ey, F1x, F1y, 1.2f, 0.8f, bone, 0); sLimb(Ex, Ey, F2x, F2y, 1.f, 0.8f, bone, 0); sLimb(Ex, Ey, F3x, F3y, 1.f, 0.8f, bone, 0);
+        sTri(Ex - 2, Ey, Ex + 2, Ey, Ex + s * 3, Ey - 6, horn, 1.f);
     }
-    sBall(64, 70, 40, 42, flesh, 81);
-    /* many faces pressing out of one body */
-    for (int i = 0; i < 16; i++) {
-        float x = 32 + hash2(i, 11, 9) % 64, y = 36 + hash2(i, 12, 9) % 66;
-        float nx = (x - 64) / 40.f, ny = (y - 70) / 42.f;
-        if (nx * nx + ny * ny > 0.7f) continue;
-        sBall(x, y, 6, 7, 0xFFC0A090, 0);
-        sPix((int)x - 2, (int)y - 2, 0xFF100808); sPix((int)x + 2, (int)y - 2, 0xFF100808);
-        sBall(x, y + 3, 1.5f, 1.5f + (i % 3), 0xFF2A0808, 0);
+    /* barbed tail */
+    sLimb(64, 86, 94, 106, 3, 2, skin, 0); sLimb(94, 106, 106, 92, 2, 1.5f, skin, 0);
+    sTri(100, 90, 112, 90, 108, 80, dark, 1.f);
+    /* goat legs */
+    for (int s = -1; s <= 1; s += 2) {
+        float hx = 64 + s * 9, hy = 84, kx = 64 + s * 15, ky = 100 + s * st, ax_ = 64 + s * 10, ay = 112, fx = 64 + s * 13, fy = 123;
+        sLimb(hx, hy, kx, ky, 7, 5, fur, 0);
+        sLimb(kx, ky, ax_, ay, 4, 3, fur, 0);
+        sLimb(ax_, ay, fx, fy - 2, 3, 3, fur, 0);
+        sTri(fx - 5, fy + 2, fx + 5, fy + 2, fx, fy - 4, 0xFF0C0808, 1.f);
     }
+    /* muscled torso */
+    sTri(40, 40, 88, 40, 64, 90, skin, 1.f);
+    sTri(40, 40, 64, 40, 64, 90, skin, 1.18f);
+    sQuad(46, 44, 63, 44, 63, 56, 49, 55, skin, 1.3f); sQuad(65, 44, 82, 44, 79, 55, 65, 56, skin, 0.9f);
+    for (int r = 0; r < 3; r++) { sQuad(57, 60 + r * 7, 63, 60 + r * 7, 63, 65 + r * 7, 58, 65 + r * 7, skin, 1.2f); sQuad(65, 60 + r * 7, 71, 60 + r * 7, 70, 65 + r * 7, 65, 65 + r * 7, skin, 0.88f); }
+    /* arms and claws */
+    if (f == 2) {
+        sLimb(42, 42, 28, 24, 6, 5, skin, 0); sLimb(28, 24, 30, 8, 5, 4, skin, 0); sClaws(30, 2, -1.f, horn);
+        sLimb(86, 42, 100, 24, 6, 5, skin, 0); sLimb(100, 24, 98, 8, 5, 4, skin, 0); sClaws(98, 2, 1.f, horn);
+    } else {
+        sLimb(42, 42, 28, 60 + st, 6, 5, skin, 0); sLimb(28, 60 + st, 36, 76 + st, 5, 4, skin, 0); sClaws(36, 76 + st, -1.f, horn);
+        sLimb(86, 42, 100, 60 - st, 6, 5, skin, 0); sLimb(100, 60 - st, 92, 76 - st, 5, 4, skin, 0); sClaws(92, 76 - st, 1.f, horn);
+    }
+    /* angular horned head */
+    sLimb(64, 30, 64, 40, 5, 5, skin, 0);
+    sQuad(54, 12, 74, 12, 71, 28, 57, 28, skin, 1.1f);
+    sTri(57, 28, 71, 28, 64, 38, skin, 0.9f);
+    sTri(54, 14, 48, 8, 55, 20, skin, 1.f); sTri(74, 14, 80, 8, 73, 20, skin, 0.9f);           /* pointed ears */
+    for (int s = -1; s <= 1; s += 2) { sLimb(64 + s * 7, 13, 64 + s * 16, 5, 3, 2.2f, horn, 0); sLimb(64 + s * 16, 5, 64 + s * 13, 0, 2.2f, 1, horn, 0); }
+    sTri(56, 17, 63, 20, 57, 21, eye, 1.f); sTri(72, 17, 65, 20, 71, 21, eye, 1.f);
+    sLimb(55, 15, 63, 18, 0.7f, 0.7f, dark, 0); sLimb(73, 15, 65, 18, 0.7f, 0.7f, dark, 0);
+    sQuad(58, 28, 70, 28, 68, 32, 60, 32, dark, 1.f);
+    sTri(60, 28, 62, 28, 61, 32, horn, 1.f); sTri(66, 28, 68, 28, 67, 32, horn, 1.f);
     sOutline(cur);
 }
+/* the Beast from the sea (Revelation 13:1-2) */
 static void beastFrame(int f)
 {
     float ph = f < 4 ? f * PI_F / 2.f : 0.f, lo = f < 4 ? sinf(ph) * 5.f : 0.f;
-    uint32_t pelt = 0xFFC89048, spot = 0xFF3A2410, bear = 0xFF4A3020, mane = 0xFF7A4A18, gold = 0xFFE0B030, horn = 0xFFE0D8C0;
+    uint32_t pelt = 0xFFC08440, spot = 0xFF2E1C0C, bear = 0xFF3E2818, mane = 0xFF6A3A14, gold = 0xFFE0B030, horn = 0xFFE0D8C0, dark = 0xFF200A06;
     /* "his feet were as the feet of a bear" */
-    sLimb(40, 96, 36, 118 + lo * 0.5f, 11, 9, bear, 91); sBall(34, 121 + lo * 0.5f, 12, 5, bear, 91);
-    sLimb(88, 96, 92, 118 - lo * 0.5f, 11, 9, bear, 91); sBall(94, 121 - lo * 0.5f, 12, 5, bear, 91);
-    for (int k = -2; k <= 2; k++) { sPix(34 + k * 4, 126, horn); sPix(94 + k * 4, 126, horn); }
-    /* "the beast which I saw was like unto a leopard" */
-    sBall(64, 90, 44, 26, pelt, 91);
-    for (int i = 0; i < 24; i++) {
-        float x = 26 + hash2(i, 21, 9) % 76, y = 70 + hash2(i, 22, 9) % 40;
-        float nx = (x - 64) / 44.f, ny = (y - 90) / 26.f;
-        if (nx * nx + ny * ny > 0.8f) continue;
-        sBall(x, y, 3, 2.5f, spot, 0); sBall(x, y, 1.4f, 1.2f, scaleRGB(pelt, 0.8f), 0);
+    for (int s = -1; s <= 1; s += 2) {
+        float l = s < 0 ? lo : -lo;
+        sQuad(64 + s * 18, 92, 64 + s * 34, 92, 64 + s * 32, 116 + l * 0.5f, 64 + s * 22, 116 + l * 0.5f, bear, s < 0 ? 1.1f : 0.85f);
+        sQuad(64 + s * 16, 114 + l * 0.5f, 64 + s * 38, 114 + l * 0.5f, 64 + s * 40, 124 + l * 0.3f, 64 + s * 14, 124 + l * 0.3f, bear, 0.95f);
+        for (int k = 0; k < 4; k++) sTri(64 + s * (16 + k * 7), 123, 64 + s * (19 + k * 7), 123, 64 + s * (18 + k * 7), 128, horn, 1.f);
+    }
+    /* "like unto a leopard": a hunched, muscled body */
+    sQuad(18, 84, 110, 84, 98, 110, 30, 110, pelt, 1.f);
+    sTri(18, 84, 64, 62, 64, 84, pelt, 1.25f);
+    sTri(64, 62, 110, 84, 64, 84, pelt, 0.95f);
+    sTri(30, 110, 64, 116, 98, 110, pelt, 0.7f);
+    for (int i = 0; i < 26; i++) {
+        float x = 26 + hash2(i, 21, 9) % 76, y = 72 + hash2(i, 22, 9) % 36;
+        if (y < 84 - (64 - fabsf(x - 64)) * 0.4f || y > 108) continue;
+        sQuad(x - 3, y, x, y - 2, x + 3, y, x, y + 2, spot, 1.f);
     }
     /* "having seven heads and ten horns, and upon his horns ten crowns" */
     float hx[7], hy[7];
@@ -558,23 +608,84 @@ static void beastFrame(int f)
         float sway = f < 4 ? sinf(ph + h) * 3.f : 0.f, lunge = f == 5 ? 10.f : f == 4 ? -6.f : 0.f;
         float bx = 64 + (h - 3) * 6.f, by = 72.f, len = 30.f + (h % 2) * 6.f;
         hx[h] = bx + cosf(ang) * len + sway; hy[h] = by + sinf(ang) * len + lunge;
-        sLimb(bx, by, hx[h], hy[h], 6, 5, pelt, 91);
+        sLimb(bx, by, hx[h], hy[h], 5, 4, pelt, 0);
     }
     int hornsLeft = 10;
     for (int h = 0; h < 7; h++) {
-        int nh = h < 3 ? 2 : 1;            /* three heads with two horns, four with one: ten horns */
+        float x = hx[h], y = hy[h];
+        int nh = h < 3 ? 2 : 1;             /* three heads with two horns, four with one: ten horns */
         for (int k = 0; k < nh && hornsLeft > 0; k++, hornsLeft--) {
             float side = nh == 2 ? (k ? 1.f : -1.f) : 0.f;
-            float x0 = hx[h] + side * 5, y0 = hy[h] - 7, x1 = hx[h] + side * 8, y1 = hy[h] - 18;
-            sLimb(x0, y0, x1, y1, 2, 1, horn, 0);
-            sBall(x1, y1 - 1, 3, 2, gold, 0); sPix((int)x1 - 2, (int)y1 - 4, gold); sPix((int)x1, (int)y1 - 5, gold); sPix((int)x1 + 2, (int)y1 - 4, gold);
+            float x0 = x + side * 5, y0 = y - 7, x1 = x + side * 9, y1 = y - 19;
+            sTri(x0 - 2, y0, x0 + 2, y0, x1, y1, horn, 1.f);
+            sQuad(x1 - 3, y1, x1 + 3, y1, x1 + 3, y1 - 2, x1 - 3, y1 - 2, gold, 1.f);
+            sTri(x1 - 3, y1 - 2, x1 - 1, y1 - 2, x1 - 2, y1 - 5, gold, 1.f); sTri(x1 + 1, y1 - 2, x1 + 3, y1 - 2, x1 + 2, y1 - 5, gold, 1.f);
+        }
+        /* jagged mane */
+        for (int k = 0; k < 10; k++) {
+            float a0 = k * 2.f * PI_F / 10.f, a1 = a0 + PI_F / 10.f, a2 = a0 + 2.f * PI_F / 10.f;
+            sTri(x + cosf(a0) * 7, y + sinf(a0) * 7, x + cosf(a1) * 13, y + sinf(a1) * 12, x + cosf(a2) * 7, y + sinf(a2) * 7, mane, k & 1 ? 1.1f : 0.85f);
         }
         /* "and his mouth as the mouth of a lion" */
-        sBall(hx[h], hy[h], 11, 10, mane, 92);
-        sBall(hx[h], hy[h] + 1, 7, 7, pelt, 91);
-        sBall(hx[h], hy[h] + 5, 4, 2.5f, 0xFF2A0A0A, 0);
-        sPix((int)hx[h] - 2, (int)hy[h] + 4, horn); sPix((int)hx[h] + 2, (int)hy[h] + 4, horn);
-        sPix((int)hx[h] - 3, (int)hy[h] - 1, 0xFFFF3020); sPix((int)hx[h] + 3, (int)hy[h] - 1, 0xFFFF3020);
+        sQuad(x, y - 8, x + 7, y, x, y + 9, x - 7, y, pelt, 1.f);
+        sTri(x - 7, y, x, y - 8, x, y + 9, pelt, 1.2f);
+        sTri(x - 4, y + 3, x + 4, y + 3, x, y + 9, dark, 1.f);
+        sTri(x - 3, y + 3, x - 1, y + 3, x - 2, y + 7, horn, 1.f); sTri(x + 1, y + 3, x + 3, y + 3, x + 2, y + 7, horn, 1.f);
+        sTri(x - 5, y - 2, x - 1, y - 1, x - 4, y, 0xFFFF3020, 1.f); sTri(x + 5, y - 2, x + 1, y - 1, x + 4, y, 0xFFFF3020, 1.f);
+    }
+    sOutline(cur);
+}
+/* the players are archangels: P1 Saint Michael (gold armour, red cloak), P2 Gabriel (silver armour, blue cloak) */
+static void angelFrame(int who)
+{
+    uint32_t armor = who ? 0xFFB8C2D0 : 0xFFD8A838, cloak = who ? 0xFF2850B0 : 0xFFA82020;
+    uint32_t hair = who ? 0xFFE8C870 : 0xFF3A2410, glow = who ? 0xFF30D8FF : 0xFFFF8A20;
+    uint32_t feather = 0xFFF2F0E8, skin = 0xFFE0B090, gold = 0xFFF0D060, dark = 0xFF2A1A10;
+    /* great white wings */
+    for (int s = -1; s <= 1; s += 2) {
+        float lit = s < 0 ? 1.12f : 0.9f;
+        for (int k = 6; k >= 0; k--) {
+            float tx = 64 + s * (22 + k * 6.5f), ty = 4 + k * 11.f;
+            float bx = 64 + s * (12 + k * 1.5f), by = 38 + k * 4.f;
+            sTri(bx - 3, by, bx + 3, by + 2, tx, ty, feather, (k & 1) ? lit : lit * 0.86f);
+        }
+        for (int k = 0; k < 4; k++) {
+            float tx = 64 + s * (22 + k * 5.f), ty = 22 + k * 8.f;
+            sTri(64 + s * 12, 38 + k * 3, 64 + s * 14, 46 + k * 3, tx, ty, feather, lit * 1.05f);
+        }
+    }
+    /* cloak hanging behind */
+    sQuad(44, 40, 84, 40, 94, 118, 34, 118, cloak, 0.8f);
+    /* armoured legs and boots */
+    sLimb(56, 84, 55, 118, 7, 6, armor, 0); sLimb(72, 84, 73, 118, 7, 6, armor, 0);
+    sQuad(48, 116, 60, 116, 62, 125, 46, 125, scaleRGB(armor, 0.6f), 1.f); sQuad(68, 116, 80, 116, 82, 125, 66, 125, scaleRGB(armor, 0.6f), 1.f);
+    /* leather strip skirt */
+    for (int k = 0; k < 6; k++) sQuad(46 + k * 6, 80, 51 + k * 6, 80, 51 + k * 6, 94, 46 + k * 6, 94, k & 1 ? 0xFF6A4020 : 0xFF7A4A26, 1.f);
+    /* breastplate, lit from the left */
+    sQuad(44, 40, 84, 40, 80, 80, 48, 80, armor, 0.95f);
+    sTri(44, 40, 64, 40, 64, 80, armor, 1.2f);
+    sLimb(56, 50, 56, 58, 0.6f, 0.6f, scaleRGB(armor, 0.6f), 0); sLimb(72, 50, 72, 58, 0.6f, 0.6f, scaleRGB(armor, 0.6f), 0);
+    sQuad(46, 78, 82, 78, 82, 82, 46, 82, gold, 1.f);
+    sQuad(64, 56, 68, 60, 64, 64, 60, 60, glow, 1.f);                              /* glowing emblem */
+    sLimb(48, 76, 80, 76, 0.7f, 0.7f, glow, 0);
+    /* shoulder plates */
+    sQuad(36, 38, 50, 36, 52, 48, 38, 50, armor, 1.15f); sQuad(78, 36, 92, 38, 90, 50, 76, 48, armor, 0.85f);
+    /* arms holding a rifle across the body */
+    sLimb(42, 46, 40, 66, 6, 5, armor, 0); sLimb(86, 46, 88, 66, 6, 5, armor, 0);
+    sQuad(30, 68, 82, 66, 82, 72, 30, 74, 0xFF2A2C32, 1.f);
+    sLimb(32, 70, 80, 68, 0.6f, 0.6f, glow, 0);
+    sBall(41, 70, 6, 5, scaleRGB(armor, 0.8f), 0); sBall(87, 70, 6, 5, scaleRGB(armor, 0.8f), 0);
+    /* head */
+    sLimb(64, 30, 64, 38, 5, 5, skin, 0);
+    if (who) sQuad(51, 14, 77, 14, 80, 40, 48, 40, hair, 1.f);                    /* Gabriel's long hair */
+    sBall(64, 22, 10, 12, skin, 0);
+    if (who) sQuad(53, 10, 75, 10, 75, 16, 53, 16, hair, 1.1f);
+    else { sBall(58, 11, 5, 4, hair, 0); sBall(64, 9, 6, 4, hair, 0); sBall(70, 11, 5, 4, hair, 0); }  /* Michael's dark curls */
+    sPix(60, 22, dark); sPix(68, 22, dark); sLimb(61, 28, 67, 28, 0.5f, 0.5f, 0xFF9A5A40, 0);
+    /* halo */
+    for (int k = 0; k < 24; k++) {
+        float a0 = k * 2.f * PI_F / 24.f, a1 = (k + 1) * 2.f * PI_F / 24.f;
+        sLimb(64 + cosf(a0) * 15, 4 + sinf(a0) * 3.5f, 64 + cosf(a1) * 15, 4 + sinf(a1) * 3.5f, 1.3f, 1.3f, gold, 0);
     }
     sOutline(cur);
 }
@@ -595,13 +706,13 @@ static void buildSprites(void)
     for (int f = 0; f < 3; f++) { cur = spr[SP_CRAWL + f]; frogFrame(f); }
     sTransform(spr[SP_CRAWL + 3], spr[SP_CRAWL + 0], 0.f, 0.9f, 64, 120, 64, 124);
     sTransform(spr[SP_CRAWL + 4], spr[SP_CRAWL + 0], 0.f, 0.8f, 64, 120, 64, 126);
-    /* Legion, "for we are many" (Mark 5:9) */
-    for (int f = 0; f < 3; f++) { cur = spr[SP_BLOAT + f]; legionFrame(f); }
+    /* fallen angels, cast out with the dragon (Revelation 12:7-9) */
+    for (int f = 0; f < 3; f++) { cur = spr[SP_BLOAT + f]; fallenFrame(f); }
     /* the Beast from the sea (Revelation 13:1-2) */
     for (int f = 0; f < 6; f++) { cur = spr[SP_BRUTE + f]; beastFrame(f); }
     buildDeathFrames(SP_BRUTE);
-    cur = spr[SP_P1]; personFrame(0xFFFF8A20);
-    cur = spr[SP_P2]; personFrame(0xFF30D8FF);
+    cur = spr[SP_P1]; angelFrame(0);
+    cur = spr[SP_P2]; angelFrame(1);
     sTransform(spr[SP_PDOWN], spr[SP_P1], -1.5f, 0.82f, 64, 125, 112, 124);
     cur = spr[SP_PU_AMMO]; powerFrame(0xFF60D060, "A");
     cur = spr[SP_PU_FIRE]; powerFrame(0xFFFF6030, "F");
@@ -617,7 +728,7 @@ enum { V_NOISE, V_TONE, V_GROAN };
 typedef struct { int type; float t, dur, f0, f1, vol, ph, lp, k, delay; } Voice;
 static Voice voices[24];
 static SDL_AudioDeviceID audioDev;
-static int optMaster = 8, optMusic = 6, optTurn = 5, optSplit = 0, optFull = 1;
+static int optMaster = 8, optMusic = 6, optTurn = 5, optSplit = 0, optFull = 1, optAim = 2;
 static volatile int musicMode;          /* 0 calm, 1 wave in progress */
 static double musClock;
 static float padPh[6], padLp, bassPh, bassEnv, bassF, melPh, melEnv, melF, hatEnv, windLp, windLp2, windT;
@@ -1121,7 +1232,7 @@ static void dropPower(float x, float y)
 static void killZombie(Zombie *z, Player *by);
 static void explode(float x, float y)
 {
-    spawnParts(x, y, 0.5f, 30, 0xFF9AB040, 2.5f, 0.12f);
+    spawnParts(x, y, 0.5f, 30, 0xFFFF7020, 2.5f, 0.12f);
     spawnParts(x, y, 0.5f, 12, 0xFF6A1010, 2.0f, 0.10f);
     playV(V_NOISE, 0.9f, 0, 0, 0.8f, 0.08f, 0);
     for (int i = 0; i < 2; i++) {
@@ -1151,6 +1262,25 @@ static void killZombie(Zombie *z, Player *by)
     if (z->type == ZT_BLOAT) { z->on = 0; explode(z->x, z->y); }
 }
 
+/* aim assist: the visible demon closest to where you are pointing, within a cone */
+static Zombie *aimTarget(Player *p, float cone, float *diffOut)
+{
+    Zombie *best = NULL; float bestScore = 1e9f;
+    for (int i = 0; i < MAXZ; i++) {
+        Zombie *z = &zs[i];
+        if (!z->on || z->dead) continue;
+        float dx = z->x - p->x, dy = z->y - p->y, d = sqrtf(dx * dx + dy * dy);
+        if (d < 0.3f || d > 22.f) continue;
+        float diff = atan2f(dy, dx) - p->ang;
+        while (diff > PI_F) diff -= 2 * PI_F;
+        while (diff < -PI_F) diff += 2 * PI_F;
+        if (fabsf(diff) > cone) continue;
+        if (castDist(p->x, p->y, dx / d, dy / d) < d - 0.3f) continue;
+        float score = fabsf(diff) + d * 0.01f;
+        if (score < bestScore) { bestScore = score; best = z; *diffOut = diff; }
+    }
+    return best;
+}
 static void fire(Player *p)
 {
     int s = p->cur, w = p->weap[s];
@@ -1169,8 +1299,10 @@ static void fire(Player *p)
     else playV(V_NOISE, 0.22f, 0, 0, 0.55f, 0.50f, 0);
     if (p->lvl[s]) playV(V_TONE, 0.08f, 900, 300, 0.12f, 0, 0);
     float dmgBase = wDmg(p, s);
+    float baseAng = p->ang, ad = 0.f;
+    if (optAim && aimTarget(p, optAim == 2 ? 0.20f : 0.09f, &ad)) baseAng += ad;     /* shots bend onto the target */
     for (int pe = 0; pe < W->pellets; pe++) {
-        float a = p->ang + (frand() * 2.f - 1.f) * W->spread;
+        float a = baseAng + (frand() * 2.f - 1.f) * W->spread;
         float dx = cosf(a), dy = sinf(a);
         float wallD = castDist(p->x, p->y, dx, dy);
         float minT = 0.f;
@@ -1419,6 +1551,10 @@ static void updatePlayer(int i, float dt)
     if (p->state == ST_DEAD) return;
     Ctl c = autotest ? botCtl(i) : readCtl(i);
     p->ang += c.turn * (1.2f + optTurn * 0.28f) * dt;
+    if (optAim && !autotest) {                         /* gentle pull toward the nearest demon in view */
+        float ad = 0.f, rate = optAim == 2 ? 2.4f : 1.0f;
+        if (aimTarget(p, optAim == 2 ? 0.32f : 0.16f, &ad)) p->ang += clampf(ad, -rate * dt, rate * dt);
+    }
     float dx = cosf(p->ang), dy = sinf(p->ang);
     float mvx = (dx * c.fwd - dy * c.strafe) * 3.0f * dt, mvy = (dy * c.fwd + dx * c.strafe) * 3.0f * dt;
     if (moveOk(p->x + mvx, p->y, playerPass, 0.25f)) p->x += mvx;
@@ -1683,7 +1819,9 @@ static void drawWeapon(Player *p, int vx, int vy, int vw, int vh)
     gNx = nx; gNy = ny; gAx = fx - nx; gAy = fy - ny; gL = sqrtf(gAx * gAx + gAy * gAy);
     gPx = -gAy / gL; gPy = gAx / gL;
     if (gPy > 0) { gPx = -gPx; gPy = -gPy; }                          /* +perp points up = lit side */
-    uint32_t metal = 0xFF5A5E68, dark = 0xFF2A2C32, wood = 0xFF8A5A30, skin = 0xFF646A78, sleeve = 0xFF33363F;
+    uint32_t metal = 0xFF5A5E68, dark = 0xFF2A2C32, wood = 0xFF8A5A30;
+    uint32_t skin = p == &pl[1] ? 0xFFB8C2D0 : 0xFFD8A838;                          /* archangel gauntlet */
+    uint32_t sleeve = p == &pl[1] ? 0xFF2850B0 : 0xFFA82020;                        /* cloak sleeve */
     uint32_t glow = p == &pl[1] ? 0xFF30D8FF : 0xFFFF8A20;
     if (p->lvl[p->cur]) { metal = mixC(metal, 0xFF7070FF, 50 * p->lvl[p->cur]); dark = mixC(dark, 0xFF4040C0, 40 * p->lvl[p->cur]); }
     GPart parts[10]; int n = 0;
@@ -2032,16 +2170,17 @@ static void renderTitle(float t)
 static void renderOptions(float t)
 {
     titleBackdrop(t);
-    blendRect(120, 96, 400, 200, 0xFF000000, 170);
-    char rows[6][48];
+    blendRect(120, 96, 400, 210, 0xFF000000, 170);
+    char rows[7][48];
     sprintf(rows[0], "MASTER VOLUME  < %d >", optMaster);
     sprintf(rows[1], "MUSIC VOLUME  < %d >", optMusic);
     sprintf(rows[2], "TURN SPEED  < %d >", optTurn);
     sprintf(rows[3], "SPLIT SCREEN  < %s >", optSplit ? "TOP/BOTTOM" : "SIDE BY SIDE");
     sprintf(rows[4], "FULLSCREEN  < %s >", optFull ? "ON" : "OFF");
-    strcpy(rows[5], "BACK");
+    sprintf(rows[5], "AIM ASSIST  < %s >", optAim == 2 ? "HIGH" : optAim == 1 ? "LOW" : "OFF");
+    strcpy(rows[6], "BACK");
     drawTextC(FBW / 2, 104, 3, 0xFFF0F0F0, "OPTIONS");
-    for (int i = 0; i < 6; i++) drawTextC(FBW / 2, 140 + i * 24, 2, i == optSel ? 0xFFFFE070 : 0xFFD8D8D8, rows[i]);
+    for (int i = 0; i < 7; i++) drawTextC(FBW / 2, 136 + i * 22, 2, i == optSel ? 0xFFFFE070 : 0xFFD8D8D8, rows[i]);
 }
 
 /* ------------------------------------------------------------------ */
@@ -2059,6 +2198,7 @@ static void loadSave(void)
         for (int m = 0; m < NMAPS; m++) if (fscanf(f, "%d %d", &bestWave[m], &wonMap[m]) != 2) break;
         int a, b, c, d, e;
         if (fscanf(f, "%d %d %d %d %d", &a, &b, &c, &d, &e) == 5) { optMaster = clampi(a, 0, 10); optMusic = clampi(b, 0, 10); optTurn = clampi(c, 1, 10); optSplit = d & 1; optFull = e & 1; }
+        if (fscanf(f, "%d", &a) == 1) optAim = clampi(a, 0, 2);
         fclose(f);
     }
 }
@@ -2069,7 +2209,7 @@ static void writeSave(void)
     FILE *f = saveDir[0] ? fopen(path, "w") : NULL;
     if (!f) return;
     for (int m = 0; m < NMAPS; m++) fprintf(f, "%d %d\n", bestWave[m], wonMap[m]);
-    fprintf(f, "%d %d %d %d %d\n", optMaster, optMusic, optTurn, optSplit, optFull);
+    fprintf(f, "%d %d %d %d %d\n%d\n", optMaster, optMusic, optTurn, optSplit, optFull, optAim);
     fclose(f);
 }
 
@@ -2110,17 +2250,18 @@ static int menuInput(int nav, SDL_Window *win, int *running)
         return 1;
     }
     if (gameState == GS_OPTIONS) {
-        if (nav == NAV_UP) optSel = (optSel + 5) % 6;
-        if (nav == NAV_DOWN) optSel = (optSel + 1) % 6;
-        if (nav == NAV_LEFT || nav == NAV_RIGHT || (nav == NAV_OK && optSel < 5)) {
+        if (nav == NAV_UP) optSel = (optSel + 6) % 7;
+        if (nav == NAV_DOWN) optSel = (optSel + 1) % 7;
+        if (nav == NAV_LEFT || nav == NAV_RIGHT || (nav == NAV_OK && optSel < 6)) {
             int d = nav == NAV_LEFT ? -1 : 1;
             if (optSel == 0) optMaster = clampi(optMaster + d, 0, 10);
             if (optSel == 1) optMusic = clampi(optMusic + d, 0, 10);
             if (optSel == 2) optTurn = clampi(optTurn + d, 1, 10);
             if (optSel == 3) optSplit ^= 1;
+            if (optSel == 5) optAim = (optAim + 3 + d) % 3;
             if (optSel == 4) { optFull ^= 1; SDL_SetWindowFullscreen(win, optFull ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0); }
         }
-        if ((nav == NAV_OK && optSel == 5) || nav == NAV_BACK) { gameState = GS_TITLE; writeSave(); }
+        if ((nav == NAV_OK && optSel == 6) || nav == NAV_BACK) { gameState = GS_TITLE; writeSave(); }
         if (nav) playV(V_TONE, 0.04f, 900, 900, 0.15f, 0, 0);
         return 1;
     }
@@ -2160,7 +2301,7 @@ int main(int argc, char **argv)
     buildTextures();
     buildSprites();
     if (sheet) {
-        static const int ids[10] = {SP_Z + 0, SP_Z + 9 + 1, SP_Z + 18 + 4, SP_Z + 8, SP_CRAWL, SP_CRAWL + 2, SP_BLOAT, SP_BRUTE, SP_BRUTE + 5, SP_P2};
+        static const int ids[10] = {SP_Z + 0, SP_Z + 9 + 1, SP_Z + 18 + 4, SP_P1, SP_CRAWL, SP_CRAWL + 2, SP_BLOAT, SP_BRUTE, SP_BRUTE + 5, SP_P2};
         for (int i = 0; i < FBW * FBH; i++) fb[i] = 0xFF302830;
         for (int k = 0; k < 10; k++)
             for (int y = 0; y < SS; y++) for (int x = 0; x < SS; x++) { uint32_t c = spr[ids[k]][y * SS + x]; if (c) fb[(10 + (k / 5) * 170 + y) * FBW + (k % 5) * 128 + x] = c; }

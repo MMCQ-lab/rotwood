@@ -1,7 +1,7 @@
 # Rotwood Hold
 
 An original 1-2 player co-op survival shooter in the Doom style (pixel-art sprites in a 3D world). It runs natively on the Raspberry Pi 400 (and Windows).
-You and a partner, in armoured cyber suits, hold out against waves of demons from the Abyss across five maps (Rotwood Farm, Gullwatch Light, Millbrook Mill, Hollow Chapel, Ironvale Depot). Every wave is harder; survive wave 99 to see the dawn. Earn money for every hit and kill, rebuild the window boards, buy doors into
+You play the archangels Saint Michael (P1, gold armour and red cloak) and Gabriel (P2, silver armour and blue cloak), and hold out against waves of demons from the Abyss across five maps (Rotwood Farm, Gullwatch Light, Millbrook Mill, Hollow Chapel, Ironvale Depot). Every wave is harder; survive wave 99 to see the dawn. Earn money for every hit and kill, rebuild the window boards, buy doors into
 new rooms and weapons drawn in chalk on the walls, and revive your partner when they go down.
 
 ## Controls
@@ -40,7 +40,7 @@ Then on the Pi:
 |---|---|---|
 | Locust of the Abyss | Revelation 9:7-10: shaped like horses ready for battle, gold crowns, men's faces, women's hair, lions' teeth, iron breastplates, loud wings, scorpion tails | The main enemy. Some run. |
 | Unclean spirit "like a frog" | Revelation 16:13 | Fast and low to the ground, from wave 6 |
-| Legion | Mark 5:9, "we are many": many faces in one body | Slow and tough. It bursts when killed and hurts everyone nearby, from wave 8 |
+| Fallen angel | Revelation 12:7-9: "the dragon fought and his angels" and were cast out by Michael. Drawn like the devil under Saint Michael in the old paintings: horns, bat wings, goat legs, claws, barbed tail | Slow and tough. It bursts into flame when killed and hurts everyone nearby, from wave 8 |
 | The Beast from the sea | Revelation 13:1-2: seven heads, ten horns with ten crowns, a leopard's body, a bear's feet, a lion's mouth | A boss every 5th wave. It smashes window boards in one hit |
 
 ## Extras
@@ -48,3 +48,6 @@ Upgrade bench (each gun up to +3), electric fence trap ($1000), and a supply she
 
 ## Test tools (Windows build)
 `--validate` checks all maps. `--autotest SECS --map N --players 1|2 --start-wave W` runs bots and a purchase test and saves screenshots. `--sprites` saves a sprite sheet.
+
+## Aim assist
+Made for keyboards and gamepads (there's no mouse aiming). Your view is pulled gently toward the nearest demon in front of you, and shots bend onto it. Set it to Off, Low or High (the default) in Options.
