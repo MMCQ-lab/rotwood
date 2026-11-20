@@ -1,7 +1,7 @@
 # Rotwood Hold
 
-An original 1-2 player co-op zombie-survival shooter in the Doom/Wolfenstein style. It runs natively on the Raspberry Pi 400 (and Windows).
-Hold the boarded-up farmhouse wave after wave. Earn money for every hit and kill, rebuild the window boards, buy doors into
+An original 1-2 player co-op survival shooter in the Doom style (pixel-art sprites in a 3D world). It runs natively on the Raspberry Pi 400 (and Windows).
+You and a partner, in armoured cyber suits, hold out against waves of demons from the Abyss across five maps (Rotwood Farm, Gullwatch Light, Millbrook Mill, Hollow Chapel, Ironvale Depot). Every wave is harder; survive wave 99 to see the dawn. Earn money for every hit and kill, rebuild the window boards, buy doors into
 new rooms and weapons drawn in chalk on the walls, and revive your partner when they go down.
 
 ## Controls
@@ -34,3 +34,17 @@ Then on the Pi:
 ## Build on Windows (for testing)
 `build.bat` (needs Zig in `C:\tools\zig` and SDL2 in `C:\tools\SDL2`). `build\rotwood-hold.exe --autotest 120` runs a
 2-bot test that checks buying, prints stats and saves screenshots.
+
+## The demons (drawn from their descriptions in scripture)
+| In game | Source | What it does |
+|---|---|---|
+| Locust of the Abyss | Revelation 9:7-10: shaped like horses ready for battle, gold crowns, men's faces, women's hair, lions' teeth, iron breastplates, loud wings, scorpion tails | The main enemy. Some run. |
+| Unclean spirit "like a frog" | Revelation 16:13 | Fast and low to the ground, from wave 6 |
+| Legion | Mark 5:9, "we are many": many faces in one body | Slow and tough. It bursts when killed and hurts everyone nearby, from wave 8 |
+| The Beast from the sea | Revelation 13:1-2: seven heads, ten horns with ten crowns, a leopard's body, a bear's feet, a lion's mouth | A boss every 5th wave. It smashes window boards in one hit |
+
+## Extras
+Upgrade bench (each gun up to +3), electric fence trap ($1000), and a supply shelf: Vest ($2500, 175 health), Quick Hands ($2000, reload twice as fast), and Pack Strap ($3000, carry 3 guns). The Options menu has volume, music, turn speed, split screen side-by-side or top/bottom, and fullscreen.
+
+## Test tools (Windows build)
+`--validate` checks all maps. `--autotest SECS --map N --players 1|2 --start-wave W` runs bots and a purchase test and saves screenshots. `--sprites` saves a sprite sheet.
